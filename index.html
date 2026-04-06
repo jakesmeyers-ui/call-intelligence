@@ -245,7 +245,7 @@ input.was-autofilled, select.was-autofilled { border-color: rgba(0,168,150,.35) 
 .rh-row   { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
 .rh-left  { flex: 1; }
 .rh-label { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-2); margin-bottom: 6px; }
-.rh-title { font-family: var(--display); font-size: clamp(20px,2.5vw,28px); font-weight: 800; color: #fff; line-height: 1.2; margin-bottom: 10px; }
+.rh-title { font-family: var(--body); font-size: clamp(14px,1.6vw,16px); font-weight: 400; color: var(--text); line-height: 1.6; margin-bottom: 10px; }
 .rh-sub   { font-size: 13px; color: var(--text-2); line-height: 1.7; }
 
 .severity-dial {
@@ -855,8 +855,6 @@ input.was-autofilled, select.was-autofilled { border-color: rgba(0,168,150,.35) 
     <div class="topbar-sub" id="pageSubtitle">Paste a transcript and let AI diagnose the drop point</div>
   </div>
   <div class="topbar-right">
-    <span id="syncIndicator" style="font-size:12px;color:var(--teal-light);min-width:80px;text-align:right"></span>
-    <button class="btn btn-ghost btn-sm" onclick="loadFromSheets(true)" title="Pull latest calls from the shared sheet">⟳ Sync</button>
     <button class="btn btn-ghost btn-sm" onclick="exportCSV()">⬇ Export CSV</button>
     <button class="btn btn-primary btn-sm" onclick="showPage('analyze', document.querySelector('.nav-item')); clearForm()">+ New Analysis</button>
   </div>
@@ -1340,6 +1338,12 @@ Header rows and metadata are fine to include."></textarea>
       </div>
     </div>
 
+    <!-- Severity explanation -->
+    <div class="result-section" style="margin-bottom:12px">
+      <div class="rs-title">🎯 Severity Breakdown</div>
+      <div class="rs-body" id="rSevExplain"></div>
+    </div>
+
     <div class="result-grid">
       <!-- Sales Process Progress -->
       <div class="result-section full" id="salesProgressSection">
@@ -1378,12 +1382,6 @@ Header rows and metadata are fine to include."></textarea>
       <div class="result-section full">
         <div class="rs-title">✅ Process Checklist</div>
         <div class="pcl-grid" id="rChecklist"></div>
-      </div>
-
-      <!-- Severity explanation -->
-      <div class="result-section">
-        <div class="rs-title">🎯 Severity Breakdown</div>
-        <div class="rs-body" id="rSevExplain"></div>
       </div>
 
       <!-- What agent should have said -->
@@ -1684,6 +1682,16 @@ const STORE_KEY = 'tpg_call_log_v2';
 function getLog()     { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || []; } catch(e){ return []; } }
 function saveLog(log) { localStorage.setItem(STORE_KEY, JSON.stringify(log)); }
 function addCall(c)   { const log = getLog(); log.unshift(c); saveLog(log); updateBadge(); }
+
+function hashTranscript(text) {
+  // FNV-1a 32-bit — fast, good distribution, no crypto needed
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return (h >>> 0).toString(36);
+}
+function findDuplicateCall(hash) {
+  return getLog().find(c => c.transcriptHash === hash) || null;
+}
 
 const ROSTER_KEY = 'tpg_roster';
 function getRoster() { try { return JSON.parse(localStorage.getItem(ROSTER_KEY)) || []; } catch(e){ return []; } }
@@ -2190,6 +2198,15 @@ async function runAIAnalysis() {
     return;
   }
 
+  // Duplicate transcript check
+  const txHash = hashTranscript(transcript);
+  const dup = findDuplicateCall(txHash);
+  if (dup) {
+    const proceed = confirm(`⚠️ This transcript looks like it was already analyzed (${dup.agent || 'unknown agent'}, ${dup.date || 'unknown date'}). Analyze again anyway?`);
+    if (!proceed) return;
+  }
+  window._transcriptHash = txHash;
+
   const agent         = document.getElementById('f-agent').value || 'Unknown';
   const tenure        = document.getElementById('f-tenure').value || '';
   const duration      = document.getElementById('f-duration').value || '';
@@ -2245,7 +2262,7 @@ ARC METHOD (for objections):
 - NEVER accept a callback as first option. Push back every time.
 
 IMPORTANT — CANCELLATION POLICY AND FEES:
-Not all reservations have free cancellation — agents should only mention cancellation flexibility when it actually applies to the booking in question. When it does apply, the correct framing is around the reservation cost being refundable — NOT implying there is no charge at all for using the service. Example of correct framing: "This cancellation policy is great — if you change your mind, we can still refund the full reservation cost." Do NOT say "there's no charge" or "it's completely free" — there is typically a service fee involved. Evaluate whether the agent used cancellation policy accurately and honestly.
+Not all reservations have free cancellation — agents should only mention cancellation flexibility when it actually applies to the booking in question. When it does apply, the correct framing is around the reservation cost being refundable — NOT implying there is no charge at all for using the service. Example of correct framing: "This cancellation policy is great — if you change your mind, we can still refund the full reservation cost." Do NOT say "there's no charge" or "it's completely free" — there is typically a service fee involved. Evaluate whether the agent used cancellation policy accurately and honestly. EXCEPTION: If the agent collects full payment on the call (customer pays the entire reservation amount during the call), then telling the customer there are no additional charges at the property is accurate and should NOT be flagged as a fee misrepresentation.
 
 TRANSCRIPT FORMAT:
 - Columns: Date/Time | Participant Type | Participant | Text
@@ -2318,9 +2335,9 @@ LOST REASON — assign "lostReason" as exactly one of (use "na" if the call type
 - "payment_issues" — Card issues, didn't want to pay now, or payment concerns the agent couldn't resolve
 - "no_availability" — No suitable room available for the customer's dates or requirements
 - "callback_accepted" — Agent agreed to a callback as the first response without pushing to close
-- "agent_process_failure" — Sale was lost due to a clear agent error (skipped urgency, missed close, wrong opening, etc.)
+- "agent_process_failure" — Sale was lost due to a clear agent error (skipped urgency, missed close, wrong opening, etc.). Do NOT use this if the call dropped — use call_dropped instead.
 - "customer_not_ready" — Customer was early in research, no genuine buying intent shown
-- "call_dropped" — Call ended due to technical issues before a decision was made
+- "call_dropped" — Call ended abruptly due to disconnection before a decision was made. Use this whenever the transcript ends without a closing exchange, cuts off mid-sentence, or shows clear signs of technical disconnection. This takes priority over agent_process_failure.
 - "na" — Call type doesn't apply (hard_ruth, wrong_number, cs_call with no booking angle, etc.)
 
 SALES EFFORT — for ANY call type where a sale was at least theoretically possible (inquiry, block, certificate, cs, transfer), assess whether the agent tried to find a booking angle:
@@ -2334,6 +2351,9 @@ BLOCK/GROUP CALL AUTOFAIL: If callCategory is "block_group_call", check whether 
 HOTEL MEMBERSHIP INQUIRIES: If a customer calls asking about a membership with a hotel or property (e.g. "I have a membership at this hotel", "I'm a member there", "do I still have my membership?"), this is NOT a cs_call. The agent has NO access to hotel-side membership or loyalty systems. The correct response is: acknowledge they can't see hotel membership data ("I'm not able to see memberships held directly with the property"), then immediately pivot to the booking opportunity ("but I can absolutely get you a great rate for your stay — when are you looking to check in?"). If the agent confirmed hotel membership status, looked it up, or implied they had access to hotel membership data, this is a false/misleading statement (autofail #5). Classify these calls as "inquiry_call" (if no booking attempt was made) or "sales_call" (if the agent pivoted to booking).
 
 RUTH-ADJACENT PROPERTY LANGUAGE: Watch for language where the agent uses words like "here", "come back here", "last time you were here", "our property", "our hotel", or any phrasing that implies the agent is located at or is part of the hotel. This is not a RUTH violation (do not set ruthViolation=true) unless the agent directly confirmed being the hotel — but it IS a meaningful coaching issue. Flag it in issues[] with a note explaining the specific phrase used and why it implies property affiliation. Recommend language that makes the agency relationship clear instead.
+
+DROPPED CALLS:
+If lostReason is "call_dropped", still evaluate the full checklist — but use "na" (not "fail") for any step the agent never had the opportunity to reach because the call disconnected before that point. Steps the agent completed before the drop should still be scored normally. Do not include incomplete post-drop steps in severity scoring or coaching. Note in the summary that the call was dropped. Severity should reflect only what the agent actually did or didn't do before the drop.
 
 PROCESS CHECKLIST EVALUATION:
 For "stepChecklist", evaluate each item as "pass", "warn", or "fail". Use "na" for items that genuinely do not apply to this call type.
@@ -2349,6 +2369,12 @@ SILENCE / HOLD DETECTION:
 Scan every consecutive pair of transcript lines and parse their timestamps (handle formats HH:MM:SS or MM:SS). Calculate the gap in seconds between adjacent lines. For every gap of 20 seconds or more, record it. Return all such gaps in "holdGaps" as an array of objects:
   { "start": "MM:SS", "end": "MM:SS", "seconds": <integer>, "note": "<who was silent — e.g. 'Customer silent', 'Agent placed hold', 'Mutual silence'>" }
 Return "totalSilenceSeconds" as the integer sum of all those gap durations. If timestamps are not parseable or no gaps exist, return holdGaps: [] and totalSilenceSeconds: 0.
+
+APPROVED BRAND NAMES — use only these in any recommended or example language:
+- TravelPass, Nitecrawler, Reservation Desk, Reservation Counter
+- Or the placeholder: [BRAND NAME]
+Never use generic terms like "Travel Agent", "Travel Agency" as a brand name, or any other brand not on this list. When demonstrating what an agent should say, always use one of the above or [BRAND NAME].
+When coaching on RUTH responses, the correct phrasing is: "No, you called [BRAND NAME], an independent travel agency — but you called the right place! I specialize in booking hotels like [Hotel Name]..." — always say "hotels like [Hotel Name]", never "I specialize in booking [Hotel Name]" as that implies exclusivity.
 
 OUTPUT FORMAT REQUIREMENTS:
 - "rootCause": Write as 3-4 bullet points. Start each with the • character. Each bullet is one sentence max. Reference actual lines or moments.
@@ -2409,7 +2435,7 @@ JSON structure:
     "opening":  { "verbatimPhrase": <"pass"/"warn"/"fail">, "statedName": <"pass"/"warn"/"fail">, "reassuringTransition": <"pass"/"warn"/"fail"> },
     "probing":  { "askedDates": <"pass"/"warn"/"fail">, "askedGuestsRooms": <"pass"/"warn"/"fail">, "askedRoomType": <"pass"/"warn"/"fail">, "askedHIQ": <"pass"/"warn"/"fail">, "urgencyOnDates": <"pass"/"warn"/"fail"/"na"> },
     "offer":    { "statedBedType": <"pass"/"warn"/"fail">, "namedAmenities": <"pass"/"warn"/"fail">, "statedCancellationPolicy": <"pass"/"warn"/"fail">, "statedPrice": <"pass"/"warn"/"fail">, "framedRate": <"pass"/"warn"/"fail">, "urgencyInOffer": <"pass"/"warn"/"fail"> },
-    "close":    { "immediateClose": <"pass"/"warn"/"fail">, "askedName": <"pass"/"warn"/"fail">, "askedEmail": <"pass"/"warn"/"fail"> },
+    "close":    { "immediateClose": <"pass"/"warn"/"fail">, "askedName": <"pass"/"warn"/"fail"> },
     "arc":      { "applicable": <bool>, "acknowledged": <"pass"/"warn"/"fail"/"na">, "askedOpenEnded": <"pass"/"warn"/"fail"/"na">, "respondedWithValue": <"pass"/"warn"/"fail"/"na">, "urgencyInResponse": <"pass"/"warn"/"fail"/"na">, "usedHolyTrinity": <"pass"/"warn"/"fail"/"na">, "confirmedConcern": <"pass"/"warn"/"fail"/"na">, "closedAfterResponse": <"pass"/"warn"/"fail"/"na">, "doubledDown": <"pass"/"warn"/"fail"/"na">, "noCallbackFirst": <"pass"/"warn"/"fail"/"na"> },
     "notes": <object — optional short notes keyed by field name, e.g. {"verbatimPhrase": "transcript shows '...' at opening — may have been cut off"}>
   },
@@ -2494,7 +2520,7 @@ JSON structure:
     if (result.stepChecklist?.opening?.verbatimPhrase !== 'fail' && Array.isArray(result.qaAutofails)) {
       result.qaAutofails = result.qaAutofails.filter(f => !/verbatim|opening/i.test(f));
     }
-    window._lastAnalysis = { ...result, agent, tenure, duration, durationSeconds: window._durationSeconds || null, callEnd, interactionId,
+    window._lastAnalysis = { ...result, agent, tenure, duration, durationSeconds: window._durationSeconds || null, callEnd, interactionId, transcriptHash: window._transcriptHash || null,
       callType: result.callType || 'new_booking',
       ruthViolation: result.ruthViolation || false,
       ruthAgentBrand: result.ruthAgentBrand || null,
@@ -2752,7 +2778,9 @@ function renderResults(r) {
   function pclItem(label, val, sub, noteKey) {
     const cls  = val === 'pass' ? 'pass' : val === 'warn' ? 'warn' : val === 'fail' ? 'fail' : 'na';
     const icon = val === 'pass' ? '✓'    : val === 'warn' ? '⚠'    : val === 'fail' ? '✗'    : '—';
-    const note = noteKey && clNotes[noteKey] ? `<div class="pcl-warn-note">⚠ ${clNotes[noteKey]}</div>` : '';
+    const noteColor = val === 'pass' ? 'var(--teal-light)' : val === 'warn' ? 'var(--gold)' : val === 'fail' ? '#ff8a8a' : 'var(--text-3)';
+    const noteIcon  = val === 'pass' ? '✓' : '⚠';
+    const note = noteKey && clNotes[noteKey] ? `<div class="pcl-warn-note" style="color:${noteColor}">${noteIcon} ${clNotes[noteKey]}</div>` : '';
     return `<div class="pcl-item${sub?' sub':''}">
       <span class="pcl-icon ${cls}">${icon}</span>
       <span class="pcl-label ${cls}">${label}</span>
@@ -2788,7 +2816,6 @@ function renderResults(r) {
   const closeItems = [
     pclItem('Moved immediately to close — no pause, no "how does that sound?"', c.immediateClose, false, 'immediateClose'),
     pclItem('Asked for full name', c.askedName, false, 'askedName'),
-    pclItem('Asked for email', c.askedEmail, false, 'askedEmail'),
   ];
   let arcItems = [];
   if (arc.applicable) {
