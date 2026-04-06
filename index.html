@@ -2159,6 +2159,7 @@ function autoFillFromTranscript(text) {
   var durMatch = text.match(/Transcript Duration[:\s]+(\d+):(\d+)/i);
   if (durMatch) {
     var secs = parseInt(durMatch[1]) * 60 + parseInt(durMatch[2]);
+    window._durationSeconds = secs;
     var edr = document.getElementById('f-duration');
     if (edr && !edr.dataset.manual) {
       if      (secs < 120)  edr.value = 'under2';
@@ -2342,7 +2343,7 @@ THREE STATES — use carefully:
 - "warn" = transcript is unclear, cut off, or contains "..." at the key moment, making it impossible to confirm whether the agent did this correctly. Use warn when the agent MAY have done it but the transcription didn't capture it cleanly. In the "notes" object, briefly explain what was unclear (e.g. "transcript shows '...' during opening — verbatim phrase may have been spoken but not captured"). Also use warn if the agent did something partially correct but not fully (e.g. said the brand name but the "independent travel agency" phrase was mumbled or cut off).
 - "fail" = agent clearly did NOT do this. The transcript has enough content to confirm the omission or error.
 
-The warn state exists because transcription software is imperfect. A warn should prompt the coach to remind the agent to speak clearly. Use "na" only when an item genuinely does not apply (e.g. urgencyOnDates = "na" if dates were never given; ARC fields = "na" if no objection occurred). For verbatimPhrase: "pass" if the phrase is clearly present. "warn" if words are jumbled, one or two words are missing, or it looks like the transcript may have partially captured it — give benefit of the doubt. "fail" only if the agent clearly opened with a completely different greeting with no sign of the brand name or "independent travel agency" anywhere near the opening. Do NOT factor in agent name discrepancies — names are frequently garbled by transcription and agents may use nicknames.
+The warn state exists because transcription software is imperfect. A warn should prompt the coach to remind the agent to speak clearly. Use "na" only when an item genuinely does not apply (e.g. urgencyOnDates = "na" if dates were never given; ARC fields = "na" if no objection occurred). For verbatimPhrase: "pass" if the phrase is clearly present. "warn" if the opening contains ANY of: the words "independent", "travel agency", or a recognizable brand name (Reservation Desk, Reservation Counter, Travelpass, Nightcrawler, etc.) — even if words are out of order, garbled, or incomplete. "fail" ONLY if the opening exchange contains absolutely no trace of "independent", "travel agency", or any brand name — i.e. the agent opened with a completely generic greeting like "Hello, how can I help you?" with zero elements of the required phrase present. If in doubt, use "warn". Do NOT factor in agent name discrepancies.
 
 SILENCE / HOLD DETECTION:
 Scan every consecutive pair of transcript lines and parse their timestamps (handle formats HH:MM:SS or MM:SS). Calculate the gap in seconds between adjacent lines. For every gap of 20 seconds or more, record it. Return all such gaps in "holdGaps" as an array of objects:
@@ -2477,11 +2478,20 @@ JSON structure:
       showParseError(raw);
       return;
     }
-    // Safety net: if verbatimPhrase is only a warn, never treat it as an autofail
-    if (result.stepChecklist?.opening?.verbatimPhrase === 'warn' && Array.isArray(result.qaAutofails)) {
+    // Safety net: downgrade verbatimPhrase fail→warn if transcript shows any sign of the required phrase
+    if (result.stepChecklist?.opening?.verbatimPhrase === 'fail') {
+      const openingSnippet = transcript.slice(0, 800).toLowerCase();
+      if (openingSnippet.includes('independent') || openingSnippet.includes('travel agency') ||
+          openingSnippet.includes('reservation desk') || openingSnippet.includes('reservation counter') ||
+          openingSnippet.includes('travelpass') || openingSnippet.includes('nightcrawler')) {
+        result.stepChecklist.opening.verbatimPhrase = 'warn';
+      }
+    }
+    // Strip verbatim opening from autofails whenever verbatimPhrase is warn (not fail)
+    if (result.stepChecklist?.opening?.verbatimPhrase !== 'fail' && Array.isArray(result.qaAutofails)) {
       result.qaAutofails = result.qaAutofails.filter(f => !/verbatim|opening/i.test(f));
     }
-    window._lastAnalysis = { ...result, agent, tenure, duration, callEnd, interactionId,
+    window._lastAnalysis = { ...result, agent, tenure, duration, durationSeconds: window._durationSeconds || null, callEnd, interactionId,
       callType: result.callType || 'new_booking',
       ruthViolation: result.ruthViolation || false,
       ruthAgentBrand: result.ruthAgentBrand || null,
@@ -2661,7 +2671,9 @@ function renderResults(r) {
   if (gaps.length > 0 && totalSec > 0) {
     const mins = Math.floor(totalSec / 60);
     const secs = totalSec % 60;
-    silenceTotal.textContent = (mins > 0 ? mins + 'm ' : '') + secs + 's';
+    const durSec = r.durationSeconds || window._durationSeconds || null;
+    const pctStr = durSec ? ` · ${Math.round(totalSec / durSec * 100)}% of call` : '';
+    silenceTotal.textContent = (mins > 0 ? mins + 'm ' : '') + secs + 's' + pctStr;
     silenceCount.textContent = gaps.length;
     silenceDetail.innerHTML = gaps.map(g => {
       const m = Math.floor(g.seconds/60), s = g.seconds%60;
