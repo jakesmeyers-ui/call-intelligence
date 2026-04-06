@@ -2239,7 +2239,7 @@ QA AUTOFAIL CONDITIONS:
 Only flag the conditions listed below. Do NOT add autofails for anything not on this list — not for transcription artifacts, not for agent names, not for perceived tone issues, not for anything else. If something seems wrong but isn't on this list, note it in issues or coaching instead.
 
 1. RUTH Violation — agent confirmed or implied being the hotel (already tracked via ruthViolation — also add to qaAutofails if true)
-2. Missing verbatim opening — ONLY flag this if there is clearly NO indication the agent used the required phrase. Give benefit of the doubt if words are jumbled, a word or two is missing, or the transcript looks like it may have partially captured the phrase — transcription software is imperfect. For example, "Reservation, an independent travel agency" or "thank you for calling [Brand] independent travel agency" with one word dropped is a transcription artifact, not a fail. Only fail if the agent clearly opened with a completely different greeting (e.g. "Hello, this is Jane, how can I help you?") with no sign of "independent travel agency" or the brand name anywhere near the opening. Do NOT flag name discrepancies or different names — agents may use nicknames and transcription frequently garbles names.
+2. Missing verbatim opening — CRITICAL: Only add this to qaAutofails if stepChecklist.opening.verbatimPhrase is "fail". If verbatimPhrase is "warn", do NOT add to qaAutofails — a warn means transcription made it unclear, not that it was absent. Only set verbatimPhrase to "fail" (and only then add to qaAutofails) if the agent clearly opened with a completely different greeting with no sign of the brand name or "independent travel agency" anywhere near the opening (e.g. "Hello, this is Jane, how can I help you?"). Any partial match, garbled phrase, or missing word is a "warn" — not a fail. Do NOT flag name discrepancies.
 3. Accepted callback without attempting close — agent agreed to a callback as the first response without pushing back even once
 4. Failed to collect name/email at close — agent reached the close attempt but did not ask for or obtain customer full name or email
 5. False/misleading statements — agent made demonstrably false claims about the property, availability, or agency affiliation. This explicitly includes: claiming to see or access hotel-side membership/loyalty data or hotel systems; confirming a customer's hotel membership status; stating facts about the property the agent cannot verify from their booking system.
@@ -2436,6 +2436,10 @@ JSON structure:
     if (!result) {
       showParseError(raw);
       return;
+    }
+    // Safety net: if verbatimPhrase is only a warn, never treat it as an autofail
+    if (result.stepChecklist?.opening?.verbatimPhrase === 'warn' && Array.isArray(result.qaAutofails)) {
+      result.qaAutofails = result.qaAutofails.filter(f => !/verbatim|opening/i.test(f));
     }
     window._lastAnalysis = { ...result, agent, tenure, duration, callEnd, interactionId,
       callType: result.callType || 'new_booking',
