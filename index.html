@@ -2343,7 +2343,7 @@ THREE STATES — use carefully:
 - "warn" = transcript is unclear, cut off, or contains "..." at the key moment, making it impossible to confirm whether the agent did this correctly. Use warn when the agent MAY have done it but the transcription didn't capture it cleanly. In the "notes" object, briefly explain what was unclear (e.g. "transcript shows '...' during opening — verbatim phrase may have been spoken but not captured"). Also use warn if the agent did something partially correct but not fully (e.g. said the brand name but the "independent travel agency" phrase was mumbled or cut off).
 - "fail" = agent clearly did NOT do this. The transcript has enough content to confirm the omission or error.
 
-The warn state exists because transcription software is imperfect. A warn should prompt the coach to remind the agent to speak clearly. Use "na" only when an item genuinely does not apply (e.g. urgencyOnDates = "na" if dates were never given; ARC fields = "na" if no objection occurred). For verbatimPhrase: "pass" if the phrase is clearly present. "warn" if the opening contains ANY of: the words "independent", "travel agency", or a recognizable brand name (Reservation Desk, Reservation Counter, Travelpass, Nightcrawler, etc.) — even if words are out of order, garbled, or incomplete. "fail" ONLY if the opening exchange contains absolutely no trace of "independent", "travel agency", or any brand name — i.e. the agent opened with a completely generic greeting like "Hello, how can I help you?" with zero elements of the required phrase present. If in doubt, use "warn". Do NOT factor in agent name discrepancies.
+The warn state exists because transcription software is imperfect. A warn should prompt the coach to remind the agent to speak clearly. Use "na" only when an item genuinely does not apply (e.g. urgencyOnDates = "na" if dates were never given; ARC fields = "na" if no objection occurred). For verbatimPhrase: "pass" if the phrase is clearly present. "warn" if the opening contains ANY of: the words "independent", "travel agency", or a recognizable brand name (Reservation Desk, Reservations Desk, Reservation Counter, Travelpass, Nightcrawler, etc.) — even if words are out of order, garbled, incomplete, separated by punctuation, or split across sentence breaks. Punctuation and sentence structure do NOT matter — only whether the key words are present. "fail" ONLY if the opening exchange contains absolutely zero trace of "independent", "travel agency", or any brand name — i.e. a completely generic greeting like "Hello, how can I help you?" with no required elements at all. If in doubt, use "warn". Do NOT factor in agent name discrepancies.
 
 SILENCE / HOLD DETECTION:
 Scan every consecutive pair of transcript lines and parse their timestamps (handle formats HH:MM:SS or MM:SS). Calculate the gap in seconds between adjacent lines. For every gap of 20 seconds or more, record it. Return all such gaps in "holdGaps" as an array of objects:
@@ -2478,16 +2478,19 @@ JSON structure:
       showParseError(raw);
       return;
     }
-    // Safety net: downgrade verbatimPhrase fail→warn if transcript shows any sign of the required phrase
+    // Safety net: downgrade verbatimPhrase fail→warn if transcript shows any sign of the required phrase.
+    // Strip punctuation before checking so sentence breaks like "Desk. Independent" don't fool the match.
     if (result.stepChecklist?.opening?.verbatimPhrase === 'fail') {
-      const openingSnippet = transcript.slice(0, 800).toLowerCase();
-      if (openingSnippet.includes('independent') || openingSnippet.includes('travel agency') ||
-          openingSnippet.includes('reservation desk') || openingSnippet.includes('reservation counter') ||
-          openingSnippet.includes('travelpass') || openingSnippet.includes('nightcrawler')) {
-        result.stepChecklist.opening.verbatimPhrase = 'warn';
-      }
+      const openingSnippet = transcript.slice(0, 800).toLowerCase().replace(/[^a-z0-9 ]/g, ' ');
+      const hasPhrase = openingSnippet.includes('independent') ||
+                        openingSnippet.includes('travel agency') ||
+                        openingSnippet.includes('travel') && openingSnippet.includes('agency') ||
+                        openingSnippet.includes('reservation') ||
+                        openingSnippet.includes('travelpass') ||
+                        openingSnippet.includes('nightcrawler');
+      if (hasPhrase) result.stepChecklist.opening.verbatimPhrase = 'warn';
     }
-    // Strip verbatim opening from autofails whenever verbatimPhrase is warn (not fail)
+    // Strip verbatim opening from autofails whenever verbatimPhrase is not a hard fail
     if (result.stepChecklist?.opening?.verbatimPhrase !== 'fail' && Array.isArray(result.qaAutofails)) {
       result.qaAutofails = result.qaAutofails.filter(f => !/verbatim|opening/i.test(f));
     }
