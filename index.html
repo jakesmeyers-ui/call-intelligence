@@ -1441,7 +1441,7 @@ Header rows and metadata are fine to include."></textarea>
 
     <!-- Category: RUTH Violations -->
     <div class="funnel-category">
-      <div class="funnel-cat-label">🚨 RUTH Violations</div>
+      <div class="funnel-cat-label">🚨 RUTH-Related</div>
       <div id="funnelRUTH"></div>
     </div>
 
@@ -1481,6 +1481,10 @@ Header rows and metadata are fine to include."></textarea>
     <div class="chart-card">
       <div class="chart-title">❌ Lost Reason Breakdown</div>
       <div class="chart-wrap"><canvas id="chartLostReason"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">⛔ QA Autofail Reasons</div>
+      <div class="chart-wrap"><canvas id="chartQAFails"></canvas></div>
     </div>
   </div>
 
@@ -2262,7 +2266,7 @@ ARC METHOD (for objections):
 - NEVER accept a callback as first option. Push back every time.
 
 IMPORTANT — CANCELLATION POLICY AND FEES:
-Not all reservations have free cancellation — agents should only mention cancellation flexibility when it actually applies to the booking in question. When it does apply, the correct framing is around the reservation cost being refundable — NOT implying there is no charge at all for using the service. Example of correct framing: "This cancellation policy is great — if you change your mind, we can still refund the full reservation cost." Do NOT say "there's no charge" or "it's completely free" — there is typically a service fee involved. Evaluate whether the agent used cancellation policy accurately and honestly. EXCEPTION: If the agent collects full payment on the call (customer pays the entire reservation amount during the call), then telling the customer there are no additional charges at the property is accurate and should NOT be flagged as a fee misrepresentation.
+Not all reservations have free cancellation — agents should only mention cancellation flexibility when it actually applies to the booking in question. When it does apply, the correct framing is around the reservation cost being refundable — NOT implying there is no charge at all for using the service. Example of correct framing: "This cancellation policy is great — if you change your mind, we can still refund the full reservation cost." Do NOT say "there's no charge" or "it's completely free" — there is typically a service fee involved. Evaluate whether the agent used cancellation policy accurately and honestly. EXCEPTION: If the agent collects full payment on the call (customer pays the entire reservation amount during the call), then telling the customer there are no additional charges at the property is accurate and should NOT be flagged. Additionally, if an agent says something like "you won't need to pay anything else", "no additional charges", or similar — this should be scored as a "warn" in issues (not an autofail), since the agent may still be in the process of collecting payment and the statement may turn out to be accurate.
 
 TRANSCRIPT FORMAT:
 - Columns: Date/Time | Participant Type | Participant | Text
@@ -2369,6 +2373,8 @@ SILENCE / HOLD DETECTION:
 Scan every consecutive pair of transcript lines and parse their timestamps (handle formats HH:MM:SS or MM:SS). Calculate the gap in seconds between adjacent lines. For every gap of 20 seconds or more, record it. Return all such gaps in "holdGaps" as an array of objects:
   { "start": "MM:SS", "end": "MM:SS", "seconds": <integer>, "note": "<who was silent — e.g. 'Customer silent', 'Agent placed hold', 'Mutual silence'>" }
 Return "totalSilenceSeconds" as the integer sum of all those gap durations. If timestamps are not parseable or no gaps exist, return holdGaps: [] and totalSilenceSeconds: 0.
+
+VERBATIM OPENING IN COACHING: If verbatimPhrase is "warn" (not "fail"), do NOT mention the opening in the summary, issues list, root cause, or coaching script. The opening is a QA compliance item — if the agent said something close enough to be a warn, focus coaching entirely on things that affect the actual sales outcome. Only mention the opening in coaching if it is a hard "fail".
 
 APPROVED BRAND NAMES — use only these in any recommended or example language:
 - TravelPass, Nitecrawler, Reservation Desk, Reservation Counter
@@ -2701,9 +2707,18 @@ function renderResults(r) {
     const mins = Math.floor(totalSec / 60);
     const secs = totalSec % 60;
     const durSec = r.durationSeconds || window._durationSeconds || null;
-    const pctStr = durSec ? ` · ${Math.round(totalSec / durSec * 100)}% of call` : '';
+    const silencePct = durSec ? Math.round(totalSec / durSec * 100) : null;
+    const pctStr = silencePct !== null ? ` · ${silencePct}% of call` : '';
     silenceTotal.textContent = (mins > 0 ? mins + 'm ' : '') + secs + 's' + pctStr;
     silenceCount.textContent = gaps.length;
+    if (silencePct !== null && silencePct > 33) {
+      silenceRow.style.borderLeft = '3px solid var(--gold)';
+      silenceRow.style.paddingLeft = '10px';
+      const warn = document.createElement('div');
+      warn.style.cssText = 'font-size:11px;color:var(--gold);font-weight:600;margin-bottom:6px';
+      warn.textContent = '⚠ High silence/hold — exceeds 33% of call duration';
+      silenceRow.insertBefore(warn, silenceRow.firstChild);
+    }
     silenceDetail.innerHTML = gaps.map(g => {
       const m = Math.floor(g.seconds/60), s = g.seconds%60;
       const dur = (m > 0 ? m+'m ' : '') + s + 's';
@@ -3243,7 +3258,7 @@ async function saveCurrentCall(silent) {
 }
 
 // ── DASHBOARD ────────────────────────────────────────────────────
-let chartDropPoints, chartObjections, chartSeverity, chartCallCategory, chartLostReason;
+let chartDropPoints, chartObjections, chartSeverity, chartCallCategory, chartLostReason, chartQAFails;
 
 function renderDashboard() {
   const allLog = getLog();
@@ -3290,12 +3305,11 @@ function renderDashboard() {
   funnelSection.style.display = log.length ? 'block' : 'none';
   if (log.length) {
     const total = log.length;
-    const maxCount = Math.max(1, ...Object.values(dropCounts));
 
     function funnelRow(label, key, barClass) {
       const n = dropCounts[key] || 0;
       const pct = total > 0 ? Math.round(n / total * 100) : 0;
-      const barW = maxCount > 0 ? Math.round(n / maxCount * 100) : 0;
+      const barW = pct;
       if (n === 0) return `<div class="funnel-row"><div class="funnel-step-name">${label}</div><div class="funnel-zero">No calls dropped here</div></div>`;
       return `<div class="funnel-row">
         <div class="funnel-step-name">${label}</div>
@@ -3327,7 +3341,7 @@ function renderDashboard() {
 
     const pctOf = n => total > 0 ? Math.round(n/total*100) + '%' : '—';
     document.getElementById('funnelSummary').innerHTML = `
-      <div class="funnel-summary-pill"><div class="fsp-num" style="color:#ff4444">${ruthTotal}</div><div class="fsp-label">RUTH<br>Violations</div></div>
+      <div class="funnel-summary-pill"><div class="fsp-num" style="color:#ff4444">${ruthTotal}</div><div class="fsp-label">RUTH-<br>Related</div></div>
       <div class="funnel-summary-pill"><div class="fsp-num" style="color:#F4845F">${processTotal}</div><div class="fsp-label">Lost in<br>Sales Process</div></div>
       <div class="funnel-summary-pill"><div class="fsp-num" style="color:#c4a0e8">${arcTotal}</div><div class="fsp-label">Lost on<br>Objection</div></div>
       <div class="funnel-summary-pill"><div class="fsp-num" style="color:var(--text-3)">${unknownTotal}</div><div class="fsp-label">Unknown /<br>Not Sales</div></div>
@@ -3425,6 +3439,25 @@ function renderDashboard() {
     el.parentElement.innerHTML += '<div style="text-align:center;color:var(--text-3);font-size:12px;padding:20px">No lost reason data yet</div>';
   }
 
+  // ── QA AUTOFAIL REASONS chart ─────────────────────────────────────
+  const qaFailCounts = {};
+  log.forEach(c => { (c.qaAutofails || []).forEach(f => { if (f) { const k = f.split('—')[0].trim(); qaFailCounts[k] = (qaFailCounts[k]||0)+1; } }); });
+  const qaEntries = Object.entries(qaFailCounts).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
+  const qaTotal = qaEntries.reduce((s,[,v])=>s+v,0);
+  const qaColors = ['rgba(229,80,80,.8)','rgba(244,132,95,.8)','rgba(249,200,70,.8)','rgba(155,89,182,.8)','rgba(100,149,237,.8)','rgba(0,168,150,.8)','rgba(244,164,96,.8)'];
+  if (chartQAFails) chartQAFails.destroy();
+  if (qaEntries.length) {
+    chartQAFails = new Chart(document.getElementById('chartQAFails'), {
+      type: 'doughnut',
+      data: { labels: qaEntries.map(([k])=>`${k} · ${Math.round(qaFailCounts[k]/qaTotal*100)}% · ${qaFailCounts[k]}`),
+              datasets: [{ data: qaEntries.map(([,v])=>v), backgroundColor: qaColors.slice(0,qaEntries.length), borderColor:'rgba(11,30,45,.5)', borderWidth:2 }] },
+      options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'right', labels:{ color:'#7AAAA4', font:{size:11}, boxWidth:12, padding:10 } } } }
+    });
+  } else {
+    const el = document.getElementById('chartQAFails');
+    if (el) el.parentElement.innerHTML += '<div style="text-align:center;color:var(--text-3);font-size:12px;padding:20px">No QA autofail data yet</div>';
+  }
+
   // ── CHECKLIST COMPLIANCE AGGREGATION ────────────────────────────
   const clCalls = log.filter(c => c.stepChecklist);
   const clSection = document.getElementById('checklistComplianceSection');
@@ -3450,16 +3483,15 @@ function renderDashboard() {
     { section:'Offer',            key:'offer.urgencyInOffer',             label:'Reinforced urgency during offer' },
     { section:'Assumptive Close', key:'close.immediateClose',             label:'Moved immediately to close' },
     { section:'Assumptive Close', key:'close.askedName',                  label:'Asked for full name' },
-    { section:'Assumptive Close', key:'close.askedEmail',                 label:'Asked for email' },
-    { section:'ARC',              key:'arc.acknowledged',                  label:'A — Acknowledged the objection' },
-    { section:'ARC',              key:'arc.askedOpenEnded',               label:'A — Asked open-ended question' },
-    { section:'ARC',              key:'arc.respondedWithValue',           label:'R — Responded with value' },
-    { section:'ARC',              key:'arc.urgencyInResponse',            label:'R — Reinforced urgency' },
-    { section:'ARC',              key:'arc.usedHolyTrinity',              label:'R — Used the Holy Trinity' },
-    { section:'ARC',              key:'arc.confirmedConcern',             label:'C — Confirmed concern addressed' },
-    { section:'ARC',              key:'arc.closedAfterResponse',          label:'C — Moved to close after responding' },
-    { section:'ARC',              key:'arc.doubledDown',                  label:'Doubled down when needed' },
-    { section:'ARC',              key:'arc.noCallbackFirst',              label:'Did not offer callback as first option' },
+    { section:'ARC — Acknowledge', key:'arc.acknowledged',                label:'Sincerely validated the objection' },
+    { section:'ARC — Acknowledge', key:'arc.askedOpenEnded',              label:'Asked open-ended question' },
+    { section:'ARC — Respond',     key:'arc.respondedWithValue',          label:'Responded with value' },
+    { section:'ARC — Respond',     key:'arc.urgencyInResponse',           label:'Reinforced urgency' },
+    { section:'ARC — Respond',     key:'arc.usedHolyTrinity',             label:'Used the Holy Trinity' },
+    { section:'ARC — Close',       key:'arc.confirmedConcern',            label:'Confirmed concern addressed' },
+    { section:'ARC — Close',       key:'arc.closedAfterResponse',         label:'Moved to close after responding' },
+    { section:'ARC — Close',       key:'arc.doubledDown',                 label:'Doubled down when needed' },
+    { section:'ARC — Close',       key:'arc.noCallbackFirst',             label:'Did not offer callback as first option' },
   ];
 
   function getNestedVal(obj, dotKey) {
@@ -3470,7 +3502,7 @@ function renderDashboard() {
   // Tally each item
   const tallies = CL_ITEMS.map(item => {
     let pass=0, warn=0, fail=0, na=0, total=0;
-    const isARC = item.key.startsWith('arc.');
+    const isARC = item.section.startsWith('ARC');
     const callsForItem = isARC ? clCalls.filter(c => c.stepChecklist.arc && c.stepChecklist.arc.applicable) : clCalls;
     callsForItem.forEach(c => {
       const v = getNestedVal(c.stepChecklist, item.key);
@@ -3485,8 +3517,8 @@ function renderDashboard() {
   });
 
   // Group by section, sort within each section worst → best
-  const sections = ['Opening','Probing & HIQ','Offer','Assumptive Close','ARC'];
-  const sectionIcons = { 'Opening':'👋', 'Probing & HIQ':'🔍', 'Offer':'💰', 'Assumptive Close':'🤝', 'ARC':'🔄' };
+  const sections = ['Opening','Probing & HIQ','Offer','Assumptive Close','ARC — Acknowledge','ARC — Respond','ARC — Close'];
+  const sectionIcons = { 'Opening':'👋', 'Probing & HIQ':'🔍', 'Offer':'💰', 'Assumptive Close':'🤝', 'ARC — Acknowledge':'A', 'ARC — Respond':'R', 'ARC — Close':'C' };
 
   function renderClBar(item) {
     const { pass, warn, fail, scored, passRate, callsForItem } = item;
