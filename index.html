@@ -1516,14 +1516,35 @@ Header rows and metadata are fine to include."></textarea>
 
 <!-- ══ PAGE: LOG ══ -->
 <div class="page" id="page-log">
-  <div class="flex-between" style="margin-bottom:20px">
+  <div class="flex-between" style="margin-bottom:16px">
     <div><div class="sec-title">Call Log</div><div class="sec-sub">All analyzed calls — click any row to see full results</div></div>
     <button class="btn btn-ghost btn-sm" onclick="exportCSV()">⬇ Export CSV</button>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:16px">
+    <select id="logFilterAgent" onchange="renderLog()" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:7px 10px;color:var(--text);font-size:12px;font-family:inherit;cursor:pointer;outline:none">
+      <option value="">All Agents</option>
+    </select>
+    <input type="date" id="logFilterFrom" onchange="renderLog()" placeholder="From" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:6px 10px;color:#fff;font-size:12px;font-family:inherit;cursor:pointer;outline:none">
+    <span style="font-size:12px;color:var(--text-3)">to</span>
+    <input type="date" id="logFilterTo" onchange="renderLog()" placeholder="To" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:6px 10px;color:#fff;font-size:12px;font-family:inherit;cursor:pointer;outline:none">
+    <select id="logFilterCat" onchange="renderLog()" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:7px 10px;color:var(--text);font-size:12px;font-family:inherit;cursor:pointer;outline:none">
+      <option value="">All Categories</option>
+      <option value="sales_call">Sales Call</option>
+      <option value="cs_call">CS Call</option>
+      <option value="hard_ruth">Hard RUTH</option>
+      <option value="inquiry_call">Inquiry</option>
+      <option value="certificate_call">Certificate</option>
+      <option value="block_group_call">Block / Group</option>
+      <option value="wrong_number">Wrong Number</option>
+      <option value="transfer_escalation">Transfer / Escalation</option>
+    </select>
+    <button class="btn btn-ghost btn-sm" onclick="clearLogFilters()">Clear</button>
+    <span id="logFilterCount" style="font-size:12px;color:var(--text-3);margin-left:auto"></span>
   </div>
   <div class="table-card">
     <table class="tbl">
       <thead><tr>
-        <th>Date</th><th>Agent</th><th>Tenure</th><th>Hotel</th>
+        <th>Date</th><th>Agent</th><th>Tenure</th><th>Interaction ID</th>
         <th>Drop Point</th><th>Objection</th><th>Severity</th><th></th>
       </tr></thead>
       <tbody id="logTableBody"></tbody>
@@ -2862,7 +2883,20 @@ async function openTLMessage() {
     supportive: 'Empathetic and constructive. Frame failures as growth opportunities. Warm but still specific. Good for 1-on-1 coaching conversations.'
   };
 
-  const prompt = `You are a QA analyst writing a coaching message to a Team Leader (TL) about a non-sale call.
+  const tlSystemPrompt = `You are a QA analyst writing coaching messages to Team Leaders (TL) at a hotel reservations call center. You receive call analysis data and write a practical coaching message the QA analyst can send directly to the TL.
+
+Include in every message:
+1. Brief context (who, when, call ID if available)
+2. What went wrong and where (drop point + root cause in plain language)
+3. The specific moment the sale was lost
+4. 3-4 concrete coaching actions for the TL to work on with this agent
+5. The exact script the agent should have used at the critical moment
+6. One positive to reinforce (from agent strengths)
+
+Do not use placeholder text. Write the message ready to send as-is.`;
+
+  const tlUserPrompt = `TONE: ${tone}
+TONE GUIDE: ${toneGuide[tone]}
 
 CALL DATA:
 - Agent: ${a.agent}
@@ -2878,18 +2912,7 @@ CALL DATA:
 - Coaching Script: ${a.coachingScript}
 - Coaching Focus: ${(a.coachingFocus && a.coachingFocus.focus) ? a.coachingFocus.focus + ' | ' + (a.coachingFocus.steps||[]).join(' | ') : ''}
 
-TONE: ${tone}
-TONE GUIDE: ${toneGuide[tone]}
-
-Write a coaching message the QA analyst can send directly to the Team Leader. Include:
-1. Brief context (who, when, call ID if available)
-2. What went wrong and where (drop point + root cause in plain language)
-3. The specific moment the sale was lost
-4. 3-4 concrete coaching actions for the TL to work on with this agent
-5. The exact script the agent should have used at the critical moment
-6. One positive to reinforce (from agent strengths)
-
-Keep it practical — this is a real message the TL will act on. Do not use placeholder text. Write it ready to send.`;
+Write the coaching message now.`;
 
   try {
     const resp = await fetch(getAIEndpoint(), {
@@ -2898,7 +2921,8 @@ Keep it practical — this is a real message the TL will act on. Do not use plac
       body: JSON.stringify({
         model: MODEL,
         max_tokens: 1000,
-        messages: [{ role: 'user', content: prompt }]
+        system: [{ type: 'text', text: tlSystemPrompt, cache_control: { type: 'ephemeral' } }],
+        messages: [{ role: 'user', content: tlUserPrompt }]
       })
     });
     const data = await resp.json();
@@ -3003,7 +3027,7 @@ Rules:
       body: JSON.stringify({
         model: MODEL,
         max_tokens: 1200,
-        system: systemP,
+        system: [{ type: 'text', text: systemP, cache_control: { type: 'ephemeral' } }],
         messages: [{ role: 'user', content: userP }]
       })
     });
@@ -3748,16 +3772,85 @@ function renderAgents() {
   document.getElementById('agentsGrid').innerHTML = grid;
 }
 
+// ── SHARED RENDERERS (used by results view and call detail modal) ─
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function buildScriptHTML(raw) {
+  const s = (raw||'').replace(/\*\*(.*?)\*\*/g,'$1');
+  return s.split(/(?=❌|✅)/).map(function(part) {
+    part = part.trim(); if (!part) return '';
+    if (part.startsWith('❌')) return '<div style="margin:8px 0;padding:10px 14px;background:rgba(229,80,80,.08);border-left:3px solid rgba(229,80,80,.5);border-radius:0 6px 6px 0"><span style="font-size:10px;font-weight:700;color:#ff8a8a;letter-spacing:.06em;text-transform:uppercase;display:block;margin-bottom:4px">What was said</span><span style="color:#ff8a8a">' + part.replace(/^❌\s*/, '') + '</span></div>';
+    if (part.startsWith('✅')) return '<div style="margin:8px 0;padding:10px 14px;background:rgba(0,168,150,.08);border-left:3px solid rgba(0,168,150,.4);border-radius:0 6px 6px 0"><span style="font-size:10px;font-weight:700;color:var(--teal);letter-spacing:.06em;text-transform:uppercase;display:block;margin-bottom:4px">Script Recommendation</span><span style="color:var(--teal-light)">' + part.replace(/^✅\s*/, '') + '</span></div>';
+    return '<div style="margin:8px 0;color:var(--text-2)">' + part + '</div>';
+  }).join('');
+}
+function buildCompactChecklist(cl) {
+  if (!cl || !Object.keys(cl).filter(k=>k!=='notes').length) return '';
+  function sRow(title, icon, vals) {
+    const fails = vals.filter(v=>v==='fail').length;
+    const warns = vals.filter(v=>v==='warn').length;
+    const color = fails > 0 ? '#ff8a8a' : warns > 0 ? 'var(--gold)' : 'var(--teal-light)';
+    const border = fails > 0 ? 'rgba(229,80,80,.5)' : warns > 0 ? 'rgba(249,200,70,.4)' : 'rgba(0,168,150,.3)';
+    const dots = vals.map(v => {
+      if (v==='pass') return `<span style="color:var(--green)">✓</span>`;
+      if (v==='warn') return `<span style="color:var(--gold)">⚠</span>`;
+      if (v==='fail') return `<span style="color:#ff8a8a">✗</span>`;
+      return `<span style="color:var(--text-3)">—</span>`;
+    }).join('<span style="color:rgba(255,255,255,.15);margin:0 2px">·</span>');
+    return `<div style="display:flex;align-items:center;gap:12px;padding:7px 0 7px 10px;border-left:2px solid ${border}">
+      <div style="font-size:11px;font-weight:600;color:${color};width:120px;flex-shrink:0">${icon} ${title}</div>
+      <div style="font-size:13px;line-height:1">${dots}</div>
+    </div>`;
+  }
+  const o=cl.opening||{}, pr=cl.probing||{}, of=cl.offer||{}, c=cl.close||{}, arc=cl.arc||{};
+  const rows = [
+    sRow('Opening','👋',[o.verbatimPhrase,o.statedName,o.reassuringTransition]),
+    sRow('Probing','🔍',[pr.askedDates,pr.askedGuestsRooms,pr.askedRoomType,pr.askedHIQ,pr.urgencyOnDates]),
+    sRow('Offer','💰',[of.statedBedType,of.namedAmenities,of.statedCancellationPolicy,of.statedPrice,of.framedRate,of.urgencyInOffer]),
+    sRow('Close','🤝',[c.immediateClose,c.askedName]),
+  ];
+  if (arc.applicable) rows.push(sRow('ARC','🔄',[arc.acknowledged,arc.askedOpenEnded,arc.respondedWithValue,arc.urgencyInResponse,arc.usedHolyTrinity,arc.confirmedConcern,arc.closedAfterResponse,arc.doubledDown,arc.noCallbackFirst]));
+  return `<div style="margin-top:4px">
+    <div style="font-family:var(--display);font-size:13px;font-weight:700;color:#fff;margin-bottom:10px">Process Checklist</div>
+    <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:10px 14px;display:flex;flex-direction:column;gap:2px">
+      ${rows.join('')}
+      <div style="font-size:10px;color:var(--text-3);margin-top:6px">✓ pass &nbsp;⚠ warn &nbsp;✗ fail &nbsp;— n/a</div>
+    </div>
+  </div>`;
+}
+
 // ── LOG TABLE ────────────────────────────────────────────────────
 function renderLog() {
-  const log = getLog();
-  const tbody = document.getElementById('logTableBody');
-  if (!log.length) {
-    tbody.innerHTML = `<tr><td colspan="8" class="tbl-empty">No calls logged yet. Analyze a call and save it to build your log.</td></tr>`;
-    return;
+  const allLog = getLog();
+  const agentEl = document.getElementById('logFilterAgent');
+  if (agentEl) {
+    const sel = agentEl.value;
+    const agents = [...new Set(allLog.map(c => c.agent).filter(Boolean))].sort();
+    agentEl.innerHTML = '<option value="">All Agents</option>' +
+      agents.map(a => `<option value="${a}"${a===sel?' selected':''}>${a}</option>`).join('');
   }
+  const filterAgent = (document.getElementById('logFilterAgent')||{}).value || '';
+  const filterFrom  = (document.getElementById('logFilterFrom')||{}).value  || '';
+  const filterTo    = (document.getElementById('logFilterTo')||{}).value    || '';
+  const filterCat   = (document.getElementById('logFilterCat')||{}).value   || '';
+  const filtered = allLog.map((c,i) => ({ c, i })).filter(({ c }) => {
+    if (filterAgent && c.agent !== filterAgent) return false;
+    if (filterFrom  && (c.date||'') < filterFrom) return false;
+    if (filterTo    && (c.date||'') > filterTo)   return false;
+    if (filterCat   && effectiveCat(c) !== filterCat) return false;
+    return true;
+  });
+  const countEl = document.getElementById('logFilterCount');
+  if (countEl) {
+    const active = filterAgent || filterFrom || filterTo || filterCat;
+    countEl.textContent = active ? `${filtered.length} of ${allLog.length} calls` : `${allLog.length} calls`;
+  }
+  const tbody = document.getElementById('logTableBody');
+  if (!allLog.length) { tbody.innerHTML = `<tr><td colspan="8" class="tbl-empty">No calls logged yet. Analyze a call and save it to build your log.</td></tr>`; return; }
+  if (!filtered.length) { tbody.innerHTML = `<tr><td colspan="8" class="tbl-empty">No calls match your filters.</td></tr>`; return; }
   const tenureShort = { new:'New', learning:'Learning', developing:'Developing', experienced:'Experienced', veteran:'Veteran', '':'—' };
-  tbody.innerHTML = log.map((c,i) => `
+  tbody.innerHTML = filtered.map(({ c, i }) => `
     <tr>
       <td style="color:var(--text-2)">${c.date||'—'}</td>
       <td><strong style="color:#fff">${c.agent||'—'}</strong></td>
@@ -3770,16 +3863,66 @@ function renderLog() {
     </tr>`).join('');
 }
 
+function clearLogFilters() {
+  ['logFilterAgent','logFilterFrom','logFilterTo','logFilterCat'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  renderLog();
+}
+
 function openCallDetail(i) {
   const c = getLog()[i];
   if (!c) return;
-  document.getElementById('modalBody').innerHTML = `
-    <div style="font-family:var(--display);font-size:20px;font-weight:800;color:#fff;margin-bottom:4px">${c.agent} — ${c.date}</div>
-    <div style="font-size:13px;color:var(--text-2);margin-bottom:20px">${c.dropStep||c.dropPoint} · Severity ${c.severity}/10${c.interactionId ? ' · <span style=\"font-family:var(--mono);font-size:11px;color:var(--teal)\">ID: '+c.interactionId+'</span>' : ''}</div>
-    <div class="moment-box" style="margin-bottom:16px"><div class="moment-label">Summary</div>${c.summary||'—'}</div>
-    <div style="margin-bottom:16px"><div style="font-family:var(--display);font-size:13px;font-weight:700;color:#fff;margin-bottom:8px">Root Cause</div><div style="font-size:13px;color:var(--text-2);line-height:1.7">${c.rootCause||'—'}</div></div>
-    <div style="margin-bottom:16px"><div style="font-family:var(--display);font-size:13px;font-weight:700;color:#fff;margin-bottom:8px">Moment of Loss</div><div class="moment-box"><div class="moment-label">Critical Point</div>${c.momentOfLoss||'—'}</div></div>
-    <div><div style="font-family:var(--display);font-size:13px;font-weight:700;color:#fff;margin-bottom:8px">Coaching Script</div><div class="coaching-block">${(c.coachingScript||'—').replace(/\n/g,'<br>')}</div></div>`;
+  const sev = c.severity || 0;
+  const sevCls = sev >= 9 ? 'crit' : sev >= 7 ? 'high' : sev >= 4 ? 'mid' : 'low';
+  const sevLabel = { crit:'Critical', high:'Serious', mid:'Concerning', low:'Recoverable' }[sevCls];
+  const catMap = { sales_call:'Sales Call', cs_call:'CS Call', hard_ruth:'Hard RUTH', block_group_call:'Block/Group', inquiry_call:'Inquiry', certificate_call:'Certificate', wrong_number:'Wrong Number', transfer_escalation:'Transfer/Escalation' };
+  const lrMap  = { failed_arc:'Failed ARC', price:'Price', wants_online:'Wants Online', ruth_disengagement:'RUTH Disengagement', block_disengagement:'Block Disengagement', needs_to_consult:'Needs to Consult', payment_issues:'Payment Issues', no_availability:'No Availability', callback_accepted:'Callback Accepted', agent_process_failure:'Agent Process Failure', customer_not_ready:'Customer Not Ready', call_dropped:'Call Dropped' };
+  const cat = effectiveCat(c);
+  const catBadge = `<span style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:99px;background:rgba(0,168,150,.15);border:1px solid rgba(0,168,150,.3);color:var(--teal-light)">📂 ${catMap[cat]||cat}</span>`;
+  const lrBadge  = (c.lostReason && c.lostReason !== 'na') ? `<span style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:99px;background:rgba(244,132,95,.12);border:1px solid rgba(244,132,95,.3);color:var(--coral)">❌ ${lrMap[c.lostReason]||c.lostReason}</span>` : '';
+  const ruthBadge = c.ruthViolation ? `<span style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:99px;background:rgba(180,0,0,.2);border:1px solid rgba(220,0,0,.4);color:#ff6666">🚨 RUTH Violation</span>` : '';
+  const qaFails = (c.qaAutofails||[]).filter(f=>f&&f.trim());
+  if (c.ruthViolation && !qaFails.some(f=>/ruth/i.test(f))) qaFails.unshift('RUTH Violation — agent confirmed being the hotel');
+  const qaFailsHTML = qaFails.length ? `<div style="background:rgba(180,0,0,.15);border:1px solid rgba(220,0,0,.4);border-radius:10px;padding:14px 16px;margin-bottom:16px"><div style="font-size:11px;font-weight:700;color:#ff6666;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">🚨 QA Autofails</div>${qaFails.map(f=>`<div style="font-size:12.5px;color:#ffaaaa;padding:4px 0;border-bottom:1px solid rgba(220,0,0,.15)">• ${escHtml(f)}</div>`).join('')}</div>` : '';
+  function sBar(label, score) {
+    if (score == null || score === '') return '';
+    const pct = Math.max(0,Math.min(100,Number(score)||0));
+    const cls = pct>=70?'good':pct>=40?'warn':'bad';
+    return `<div class="sb-row"><div class="sb-name" style="width:80px;font-size:11px">${label}</div><div class="sb-track"><div class="sb-fill ${cls}" style="width:${pct}%"></div></div><div class="sb-pct">${pct}%</div></div>`;
+  }
+  const scoreBars = [sBar('Opening',c.openingScore),sBar('Probing',c.probingScore),sBar('Offer',c.offerScore),c.arcScore!=null?sBar('ARC',c.arcScore):''].filter(Boolean);
+  const scoresHTML = scoreBars.length ? `<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:14px 16px;margin-bottom:16px"><div style="font-size:11px;font-weight:700;color:var(--text-3);letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px">Section Scores</div><div class="score-bars">${scoreBars.join('')}</div></div>` : '';
+  const rcRaw = (c.rootCause||'').replace(/\*\*(.*?)\*\*/g,'$1');
+  const rootCauseHTML = rcRaw.includes('•')
+    ? rcRaw.split('•').filter(b=>b.trim()).map(b=>`<div style="display:flex;gap:8px;padding:3px 0"><span style="color:var(--teal);flex-shrink:0">•</span><span style="font-size:13px;color:var(--text-2);line-height:1.7">${escHtml(b.trim())}</span></div>`).join('')
+    : `<div style="font-size:13px;color:var(--text-2);line-height:1.7">${escHtml(rcRaw)}</div>`;
+  const issuesHTML = (c.issues||[]).length ? `<div style="margin-bottom:16px"><div style="font-family:var(--display);font-size:13px;font-weight:700;color:#fff;margin-bottom:8px">Issues</div><div style="display:flex;flex-wrap:wrap;gap:6px">${(c.issues||[]).map(i=>`<span class="pill pill-coral">⚠ ${escHtml(i)}</span>`).join('')}</div></div>` : '';
+  const strengthsHTML = (c.agentStrengths||[]).length ? `<div style="margin-bottom:16px"><div style="font-family:var(--display);font-size:13px;font-weight:700;color:#fff;margin-bottom:8px">Agent Strengths</div><div style="display:flex;flex-wrap:wrap;gap:6px">${(c.agentStrengths||[]).map(s=>`<span class="strength-item">✓ ${escHtml(s)}</span>`).join('')}</div></div>` : '';
+  const focusHTML = (c.coachingFocus&&c.coachingFocus.focus) ? `<div style="margin-bottom:16px"><div style="font-family:var(--display);font-size:13px;font-weight:700;color:#fff;margin-bottom:8px">Coaching Focus</div><div class="coaching-focus-box"><div class="cf-focus-label">The One Thing to Work On</div><div class="cf-focus-text">${escHtml(c.coachingFocus.focus)}</div>${(c.coachingFocus.steps||[]).length?`<ul class="cf-steps">${(c.coachingFocus.steps||[]).map((s,i)=>`<li><div class="cf-step-num">${i+1}</div><span>${escHtml(s)}</span></li>`).join('')}</ul>`:''}</div></div>` : '';
+  document.getElementById('modalBody').innerHTML = `<div style="padding-bottom:8px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;gap:16px">
+      <div style="flex:1">
+        <div style="font-family:var(--display);font-size:20px;font-weight:800;color:#fff;margin-bottom:8px">${escHtml(c.agent||'Unknown')} — ${escHtml(c.date||'')}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${catBadge}${ruthBadge}${lrBadge}${c.interactionId?`<span style="font-family:var(--mono);font-size:11px;color:var(--teal);background:rgba(0,168,150,.1);padding:3px 8px;border-radius:5px">ID: ${escHtml(c.interactionId)}</span>`:''}</div>
+      </div>
+      <div style="text-align:center;background:rgba(0,0,0,.2);border-radius:var(--radius);padding:12px 14px;flex-shrink:0">
+        <div class="sev-big ${sevCls}">${sev||'?'}</div><div class="sev-of10">/10</div><div class="sev-label ${sevCls}">${sevLabel}</div>
+      </div>
+    </div>
+    ${qaFailsHTML}
+    ${scoresHTML}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
+      <div><div style="font-family:var(--display);font-size:13px;font-weight:700;color:#fff;margin-bottom:8px">Summary</div><div class="moment-box">${escHtml(c.summary||'—')}</div></div>
+      <div><div style="font-family:var(--display);font-size:13px;font-weight:700;color:#fff;margin-bottom:8px">Root Cause</div>${rootCauseHTML}</div>
+    </div>
+    <div style="margin-bottom:16px"><div style="font-family:var(--display);font-size:13px;font-weight:700;color:#fff;margin-bottom:8px">Moment of Loss</div><div class="moment-box"><div class="moment-label">Critical Point</div>${escHtml(c.momentOfLoss||'—')}</div></div>
+    ${issuesHTML}
+    <div style="margin-bottom:16px"><div style="font-family:var(--display);font-size:13px;font-weight:700;color:#fff;margin-bottom:8px">Coaching Script</div><div style="font-size:11px;color:var(--text-3);margin-bottom:6px">Key moment from this call</div>${buildScriptHTML(c.coachingScript||'')}</div>
+    ${focusHTML}
+    ${strengthsHTML}
+    ${buildCompactChecklist(c.stepChecklist||{})}
+  </div>`;
   document.getElementById('modalOverlay').classList.add('open');
 }
 
