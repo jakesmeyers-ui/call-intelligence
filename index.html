@@ -1650,6 +1650,21 @@ Header rows and metadata are fine to include."></textarea>
   <div class="sec-title">Settings</div>
   <div class="sec-sub">Manage your team roster</div>
 
+  <div class="setup-panel" style="margin-bottom:20px">
+    <div class="setup-title">🤖 Analysis Model</div>
+    <div style="color:var(--text-2);font-size:13px;margin-bottom:12px">Controls which AI model scores your calls. Sonnet is more accurate; Haiku is ~10x cheaper for high-volume use.</div>
+    <div style="display:flex;gap:20px;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px">
+        <input type="radio" name="analysisModel" value="claude-sonnet-4-6" onchange="saveAnalysisModel(this.value)">
+        <span><strong>Sonnet 4.6</strong> — Accurate (~$0.05/call)</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px">
+        <input type="radio" name="analysisModel" value="claude-haiku-4-5-20251001" onchange="saveAnalysisModel(this.value)">
+        <span><strong>Haiku 4.5</strong> — Faster &amp; cheaper (~$0.005/call)</span>
+      </label>
+    </div>
+  </div>
+
   <div class="sec-title">Team Roster</div>
   <div class="sec-sub">Add agents with their start date — tenure will be auto-filled when their name is detected in a transcript</div>
   <div class="setup-panel">
@@ -1688,7 +1703,18 @@ const CONFIG = {
   workerUrl:  'https://call-proxy.jake-s-meyers.workers.dev',
   webhookUrl: 'https://script.google.com/macros/s/AKfycbzc9uWXJzMDKgQXf3cxKrkSNo6e0QGlkE5-lg22Z3TL-OaVGX6d4wA4eHl2j2WBIsz7/exec',
 };
-const MODEL = 'claude-sonnet-4-6';
+const MODEL      = 'claude-sonnet-4-6';
+const MODEL_FAST = 'claude-haiku-4-5-20251001';
+const MODEL_PRICING = {
+  'claude-sonnet-4-6':         { input: 3,    cacheWrite: 3.75, cacheRead: 0.30, output: 15 },
+  'claude-haiku-4-5-20251001': { input: 0.80, cacheWrite: 1.00, cacheRead: 0.08, output: 4  },
+};
+function getAnalysisModel()   { return localStorage.getItem('tpg_analysis_model') || MODEL; }
+function saveAnalysisModel(m) { localStorage.setItem('tpg_analysis_model', m); }
+function initModelSelector()  {
+  const m = getAnalysisModel();
+  document.querySelectorAll('input[name="analysisModel"]').forEach(r => { r.checked = r.value === m; });
+}
 
 // ── AI FETCH HELPER — routes through worker if configured ─────────
 function getAIEndpoint()  { return CONFIG.workerUrl || 'https://api.anthropic.com/v1/messages'; }
@@ -1833,7 +1859,7 @@ function showPage(id, el) {
   else if (id === 'agents') renderAgents();
   else if (id === 'log')  { loadFromSheets(false).then(() => renderLog()); }
   else if (id === 'costs') renderCosts();
-  if (id === 'settings')  { loadWebhookInput(); updateApiKeyStatus(); renderRoster(); }
+  if (id === 'settings')  { loadWebhookInput(); updateApiKeyStatus(); renderRoster(); initModelSelector(); }
   if (id === 'gaps')      { initGapsDatePicker(); renderGaps(); }
 }
 
@@ -2331,21 +2357,10 @@ OUTPUT FORMAT REQUIREMENTS:
 - "rootCause": Write as 3-4 bullet points. Start each with the • character. Each bullet is one sentence max. Reference actual lines or moments.
 - "coachingScript": Show ONE key exchange only. ❌ line = max one sentence (what they said). ✅ line = max two sentences (what they should have said). Keep it tight and actionable.
 - "coachingFocus": { "focus": "ONE thing this agent must work on — state it as a clear, direct directive", "steps": ["Specific action step 1 — concrete and doable", "Specific action step 2", "Specific action step 3"] }
-- "issues": Each issue is ONE short sentence (15 words max). Reference a specific moment.`;
+- "issues": Each issue is ONE short sentence (15 words max). Reference a specific moment.
 
-  // ── USER prompt: just the transcript + JSON schema ───────────────
-  const userPrompt = `AGENT: ${agent}
-INTERACTION ID: ${interactionId || 'N/A'}
-DATE: ${document.getElementById('f-date').value || 'Unknown'}
-TENURE: ${tenure || 'Unknown'}
-DURATION: ${duration || 'Unknown'}
-CALL ENDED: ${callEnd || 'Unknown'}
-
-TRANSCRIPT:
-${transcript}
-
----
-Analyze this specific transcript above. Read every line carefully.
+OUTPUT EFFICIENCY:
+Omit null fields and empty arrays entirely — do not include them in the output. String values must be concise: "summary" ≤2 sentences, "rootCause" bullets ≤1 sentence each, "coachingScript" ≤3 total sentences, "coachingIntro" ≤1 sentence. No preamble outside the JSON object.
 
 Return ONLY a JSON object — no markdown, no backticks, no text outside the JSON.
 
@@ -2412,12 +2427,27 @@ JSON structure:
   "callOutcome": <one of: booked / good_process_no_sale / partial_process / poor_process>,
   "goodCallPatterns": [<2-5 specific techniques from THIS call worth replicating — only populate if callOutcome is booked or good_process_no_sale, otherwise empty array>]
 }`;
+
+  // ── USER prompt: agent metadata + transcript only (schema is in system prompt) ─
+  const userPrompt = `AGENT: ${agent}
+INTERACTION ID: ${interactionId || 'N/A'}
+DATE: ${document.getElementById('f-date').value || 'Unknown'}
+TENURE: ${tenure || 'Unknown'}
+DURATION: ${duration || 'Unknown'}
+CALL ENDED: ${callEnd || 'Unknown'}
+
+TRANSCRIPT:
+${transcript}
+
+---
+Analyze this transcript. Every value must come from THIS specific call.`;
+  const analysisModel = getAnalysisModel();
   try {
     const response = await fetch(getAIEndpoint(), {
       method: 'POST',
       headers: getAIHeaders(),
       body: JSON.stringify({
-        model: MODEL,
+        model: analysisModel,
         max_tokens: 5000,
         system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
         messages: [{ role: 'user', content: userPrompt }]
@@ -2433,21 +2463,22 @@ JSON structure:
     const raw = data.content.map(b => b.text || '').join('');
     console.log('[TPG] Raw AI response:', raw.slice(0, 500));
 
-    // Show token usage + cost (Sonnet 4.6: $3/M input, $15/M output, $0.30/M cache read, $3.75/M cache write)
     if (data.usage) {
-      const inp        = data.usage.input_tokens          || 0;
-      const out        = data.usage.output_tokens         || 0;
-      const cacheRead  = data.usage.cache_read_input_tokens  || 0;
-      const cacheWrite = data.usage.cache_creation_input_tokens || 0;
+      const inp        = data.usage.input_tokens                 || 0;
+      const out        = data.usage.output_tokens                || 0;
+      const cacheRead  = data.usage.cache_read_input_tokens      || 0;
+      const cacheWrite = data.usage.cache_creation_input_tokens  || 0;
       const uncached   = inp - cacheRead - cacheWrite;
-      const cost = (uncached   * 3     / 1_000_000)
-                 + (cacheWrite * 3.75  / 1_000_000)
-                 + (cacheRead  * 0.30  / 1_000_000)
-                 + (out        * 15    / 1_000_000);
+      const p    = MODEL_PRICING[analysisModel] || MODEL_PRICING[MODEL];
+      const cost = (uncached   * p.input      / 1_000_000)
+                 + (cacheWrite * p.cacheWrite / 1_000_000)
+                 + (cacheRead  * p.cacheRead  / 1_000_000)
+                 + (out        * p.output     / 1_000_000);
       window._lastTokens = { inputTokens: inp, outputTokens: out, cacheRead, cacheWrite, cost };
       const el = document.getElementById('tokenCostDisplay');
-      const cacheNote = cacheRead > 0 ? ` · ⚡ cached` : (cacheWrite > 0 ? ` · cache saved` : '');
-      if (el) el.textContent = `${(inp + out).toLocaleString()} tokens · $${cost.toFixed(4)}${cacheNote}`;
+      const cacheNote  = cacheRead > 0 ? ` · ⚡ cached` : (cacheWrite > 0 ? ` · cache saved` : '');
+      const modelLabel = analysisModel.includes('haiku') ? ' · Haiku' : ' · Sonnet';
+      if (el) el.textContent = `${(inp + out).toLocaleString()} tokens · $${cost.toFixed(4)}${cacheNote}${modelLabel}`;
     }
 
     const result = robustParseJSON(raw);
@@ -2919,7 +2950,7 @@ Write the coaching message now.`;
       method: 'POST',
       headers: getAIHeaders(),
       body: JSON.stringify({
-        model: MODEL,
+        model: MODEL_FAST,
         max_tokens: 1000,
         system: [{ type: 'text', text: tlSystemPrompt, cache_control: { type: 'ephemeral' } }],
         messages: [{ role: 'user', content: tlUserPrompt }]
@@ -3025,7 +3056,7 @@ Rules:
       method: 'POST',
       headers: getAIHeaders(),
       body: JSON.stringify({
-        model: MODEL,
+        model: MODEL_FAST,
         max_tokens: 1200,
         system: [{ type: 'text', text: systemP, cache_control: { type: 'ephemeral' } }],
         messages: [{ role: 'user', content: userP }]
@@ -4732,7 +4763,7 @@ async function sendChatMessage() {
       method: 'POST',
       headers: getAIHeaders(),
       body: JSON.stringify({
-        model: MODEL,
+        model: MODEL_FAST,
         max_tokens: 1000,
         system: buildChatSystemPrompt(),
         messages: chatHistory
