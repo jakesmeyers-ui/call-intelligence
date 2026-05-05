@@ -1667,6 +1667,7 @@ const CONFIG = {
   workerUrl:  'https://call-proxy.jake-s-meyers.workers.dev',
   webhookUrl: 'https://script.google.com/macros/s/AKfycbzc9uWXJzMDKgQXf3cxKrkSNo6e0QGlkE5-lg22Z3TL-OaVGX6d4wA4eHl2j2WBIsz7/exec',
 };
+const MODEL = 'claude-sonnet-4-6';
 
 // ── AI FETCH HELPER — routes through worker if configured ─────────
 function getAIEndpoint()  { return CONFIG.workerUrl || 'https://api.anthropic.com/v1/messages'; }
@@ -1837,83 +1838,6 @@ function clearForm() {
 }
 
 // ── AI ANALYSIS ──────────────────────────────────────────────────
-const SALES_CONTEXT = `
-TRAVELPASS GROUP — SALES PROCESS (QA Approved by Adriana Rivas):
-
-STEP 1 — OPENING + REASSURING TRANSITIONAL STATEMENT:
-- Verbatim opening: "Thank you for calling reservation desk/counter an independent travel agency. Hi this is [Name], with whom do I have the pleasure today?"
-- Must identify self AND company clearly
-- Reassuring statement: "You called the right number, I'll be assisting you today" OR "You called the right place, I'll be happy to help you with your booking at [hotel]"
-- FAQ if asked if calling hotel: "No you called Travelpass / reservation counter/desk.com an independent travel agency"
-- NEVER say YES to a Ruth required question, NEVER claim to be the hotel
-
-STEP 2 — PROBING + HIQ (High Impact Questions):
-- Ask: check-in/check-out dates, number of rooms, number of guests, room type preference
-- HIQ open-ended: "What brings you to the area?" / "Are you travelling for business or pleasure?" / "What amenities are you looking for?" / "What made you choose this hotel?" / "What is your deal breaker?"
-- Sense of Urgency MUST be seeded during probing BEFORE the offer, not saved for objections
-
-STEP 3 — FEATURES & BENEFITS:
-- Features must match the customer's stated needs
-- Benefits: pool, breakfast, parking, internet, 24hr front desk, hot tub, etc.
-- Must provide ACCURATE information only
-
-STEP 4 — OFFER:
-- Formula: Bed type + 2 amenities + cancellation policy (if available) + price
-- Frame as exclusive or competitive rate
-- Sense of Urgency reason: weekend/holiday/high season/events/last-minute/one of few rooms left (only say 'last room type' if verifiable on booking system)
-
-STEP 5 — CLOSE (RIGHT AWAY — no hesitation):
-- Immediately: "Can you spell your first and last name for me?"
-- Email for confirmation
-- "For this room we will need a credit or debit card — Visa, Mastercard, Discover or American Express. I'm ready for the number."
-- Never wait for the customer to speak first after presenting the offer
-
-SENSE OF URGENCY — DETAILED GUIDE:
-SoU is NOT a step in the sales process but is critically important. It must be woven naturally into probing and the offer — never saved for objections. Agents have FOUR specific triggers to apply SoU from, and should use whichever applies to this call:
-
-TRIGGER 1 — CHECK-IN DATE IS FAR OUT (more than a week away):
-"It's great that you are calling now — these properties book up quickly. But not to worry, I will work my magic and get you a room before they are all booked out."
-Evaluation: Did the agent acknowledge the advance notice as a positive urgency signal?
-
-TRIGGER 2 — CHECK-IN IS TONIGHT OR WITHIN A FEW DAYS (last-minute):
-"Oh my, that's really last minute — these properties book up fast and often sell out by now. But you're through to the right person, let me find something for you and your family."
-Then immediately transition into HIQ: "As I check on this [name], tell me — what brings you to the area?"
-Evaluation: Did the agent acknowledge the urgency of the timing AND use it as a bridge to the HIQ?
-
-TRIGGER 3 — WHEN THE AGENT KNOWS THE LOCATION (city/area):
-"Let me see what I can get you for those dates — I'd hate for you to not get a room due to it being sold out. You know how [city] can be, especially during this time of the year. However, you're in safe hands — let me help you get a room before they are all gone."
-Evaluation: Did the agent use the destination itself as a reason for urgency? Popular cities and seasonal hotspots should always be called out.
-
-TRIGGER 4 — WHEN THE CUSTOMER GIVES A REASON FOR THE VISIT (event, trip purpose):
-Example exchange:
-Agent: "What brings you to the area?"
-Customer: "I'm coming in for a basketball tournament."
-Agent: "That makes sense — I'm sure lots of people are grabbing rooms because of the tournament. Let me work my magic and get you a room before they are all sold out."
-Evaluation: Did the agent connect the customer's reason for travel to demand/urgency in a natural, conversational way? Events, conferences, tournaments, holidays, graduations — all are valid urgency reasons.
-
-URGENCY LANGUAGE RULE: Agents must say "one of the few rooms left" as default. They may only say "last room type" if they can verify it on Cable (the booking system). Never say "the last room" without verification.
-
-WHEN EVALUATING URGENCY: Check which trigger(s) were available in this call (date mentioned? location mentioned? reason given?) and whether the agent used the matching script or a close variant. A missed urgency trigger is a coaching point even if the agent used urgency elsewhere.
-
-THE ARC METHOD (for objections):
-A — ACKNOWLEDGE: "I understand…" Find REAL reason: "What's stopping you from making the reservation?"
-R — RESPOND: "However…" — Holy Trinity: Sense of Urgency + Free Cancellation + Exclusive Rate
-  IMPORTANT CAVEAT — SAME-DAY BOOKINGS: If the customer is checking in TODAY, free cancellation is typically not available. In this case the Holy Trinity becomes TWO elements only: Sense of Urgency + Exclusive Rate. Do NOT coach an agent to use free cancellation on a same-day booking — it is either unavailable or misleading. The urgency on same-day calls is already built in naturally (last-minute scarcity), so lean harder on the exclusive rate and the fact that rooms are filling fast right now.
-C — CLOSE: "So tell me…" — close immediately after solving objection
-
-DOUBLE DOWN (when cornered):
-For non-same-day: State Free Cancellation clearly, repeat Urgency, repeat Exclusive Rate, make recap, close.
-Example: "I understand you want to look around, however the availability is extremely short and I already checked — there is no better option. The room has a free cancellation policy so you can secure your spot and look around — it's a win-win. Let's secure this now, under what name?"
-For same-day: Skip free cancellation entirely. "I understand, but I need to be honest with you — rooms for tonight are going fast and this is one of the last ones available at this rate. I can't guarantee this will still be here in 10 minutes. Let me secure this for you now — first and last name?"
-
-COMMON OBJECTIONS:
-- Price: find lower rate, or convince to change dates/accept offer via ARC
-- Online pricing: "That price is probably before tax, nonrefundable / has hidden fees / outdated — I have access to a live system in real time"
-- "I'll call back": "Wait! What's stopping you from making this reservation?" — push, never accept callback as first option (only 1 in 10 callbacks become sales)
-- Payment terms: convince with urgency + exclusive rate (+ free cancellation if NOT same-day)
-
-ACTING: confidence, pacing, tone, emphasis. "It's not only what we say, it's HOW we say it."
-`;
 
 // ── ROBUST JSON PARSER ───────────────────────────────────────────
 // Handles: markdown fences, truncated responses, unescaped newlines
@@ -2472,7 +2396,7 @@ JSON structure:
       method: 'POST',
       headers: getAIHeaders(),
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: MODEL,
         max_tokens: 5000,
         system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
         messages: [{ role: 'user', content: userPrompt }]
@@ -2972,7 +2896,7 @@ Keep it practical — this is a real message the TL will act on. Do not use plac
       method: 'POST',
       headers: getAIHeaders(),
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: MODEL,
         max_tokens: 1000,
         messages: [{ role: 'user', content: prompt }]
       })
@@ -3073,12 +2997,11 @@ Rules:
 - All content must be directly derived from the analysis data above — not generic`;
 
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    const resp = await fetch(getAIEndpoint(), {
       method: 'POST',
-      headers: Object.assign({'Content-Type':'application/json'},
-        getApiKey() ? {'x-api-key': getApiKey(), 'anthropic-version': '2023-06-01'} : {}),
+      headers: getAIHeaders(),
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: MODEL,
         max_tokens: 1200,
         system: systemP,
         messages: [{ role: 'user', content: userP }]
@@ -3894,17 +3817,29 @@ function clearWebhook() {
 }
 
 // ── CSV EXPORT ───────────────────────────────────────────────────
+function csvStr(v) { return '"' + String(v||'').replace(/"/g,"'") + '"'; }
 function exportCSV() {
   const log = getLog();
   if (!log.length) { alert('No calls to export yet.'); return; }
-  const headers = ['Interaction ID','Date','Agent','Tenure','Duration','Call End','Call Type','Drop Point','Drop Tier','Severity','Objection Type','Opening Score','Probing Score','Offer Score','ARC Score','Urgency Used','ARC Effort','Root Cause','Moment of Loss','Summary'];
+  const headers = [
+    'Interaction ID','Date','Agent','Tenure','Duration',
+    'Call Category','Lost Reason','Drop Point','Drop Tier','Sales Progress Step',
+    'Severity','Objection Type',
+    'Opening Score','Probing Score','Offer Score','ARC Score',
+    'Urgency Used','RUTH Violation','ARC Genuine Effort',
+    'Missed Booking Opportunity','Call Outcome',
+    'QA Autofails',
+    'Root Cause','Moment of Loss','Summary',
+  ];
   const rows = log.map(c => [
-    c.interactionId||'', c.date, c.agent, c.tenure, c.duration, c.callEnd,
-    effectiveCat(c), c.dropPoint, c.dropTier, c.severity, c.objectionType,
-    c.openingScore, c.probingScore, c.offerScore, c.arcScore,
-    c.urgencyUsed, `"${(c.rootCause||'').replace(/"/g,"'")}"`,
-    `"${(c.momentOfLoss||'').replace(/"/g,"'")}"`,
-    `"${(c.summary||'').replace(/"/g,"'")}"`,
+    c.interactionId||'', c.date||'', c.agent||'', c.tenure||'', c.duration||'',
+    effectiveCat(c), c.lostReason||'', c.dropPoint||'', c.dropTier||'', c.salesProgressStep||'',
+    c.severity||'', c.objectionType||'',
+    c.openingScore||'', c.probingScore||'', c.offerScore||'', c.arcScore||'',
+    c.urgencyUsed||'', c.ruthViolation||false, c.arcGenuineEffort||false,
+    c.missedBookingOpportunity||false, c.callOutcome||'',
+    csvStr((c.qaAutofails||[]).join('; ')),
+    csvStr(c.rootCause), csvStr(c.momentOfLoss), csvStr(c.summary),
   ]);
   const csv  = [headers, ...rows].map(r => r.join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
@@ -4654,7 +4589,7 @@ async function sendChatMessage() {
       method: 'POST',
       headers: getAIHeaders(),
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: MODEL,
         max_tokens: 1000,
         system: buildChatSystemPrompt(),
         messages: chatHistory
