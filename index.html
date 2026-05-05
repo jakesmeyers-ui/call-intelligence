@@ -2677,6 +2677,11 @@ function renderResults(r) {
   const silenceTotal  = document.getElementById('silenceTotal');
   const silenceCount  = document.getElementById('silenceCount');
   const silenceDetail = document.getElementById('silenceDetail');
+  // Reset warning state from any previous analysis
+  silenceRow.style.borderLeft = '';
+  silenceRow.style.paddingLeft = '';
+  silenceRow.querySelectorAll('.silence-high-warn').forEach(el => el.remove());
+
   const gaps = (r.holdGaps || []).filter(g => g && g.seconds >= 20);
   const totalSec = r.totalSilenceSeconds || gaps.reduce((s, g) => s + (g.seconds||0), 0);
   if (gaps.length > 0 && totalSec > 0) {
@@ -2691,6 +2696,7 @@ function renderResults(r) {
       silenceRow.style.borderLeft = '3px solid var(--gold)';
       silenceRow.style.paddingLeft = '10px';
       const warn = document.createElement('div');
+      warn.className = 'silence-high-warn';
       warn.style.cssText = 'font-size:11px;color:var(--gold);font-weight:600;margin-bottom:6px';
       warn.textContent = '⚠ High silence/hold — exceeds 33% of call duration';
       silenceRow.insertBefore(warn, silenceRow.firstChild);
