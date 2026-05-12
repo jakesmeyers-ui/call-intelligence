@@ -2236,7 +2236,7 @@ TRANSCRIPT FORMAT:
 YOUR JOB:
 Read the ACTUAL transcript word by word. Every field in your JSON must come directly from what was said in THIS specific call. Do not use generic descriptions. Quote real lines. Name real timestamps. Reference real moments.
 
-CALL TYPE CONTEXT: Use "callCategory" (defined below) as the primary classification. For cs_call, transfer_escalation, hard_ruth, and wrong_number calls, do NOT fault the agent for a missed sale — evaluate only professionalism and correct handling. For all other call types, a sale attempt was at least possible and should be assessed.
+CALL TYPE CONTEXT: Use "callCategory" (defined below) as the primary classification. For cs_call, transfer_escalation, hard_ruth, and wrong_number calls, do NOT fault the agent for a missed sale — evaluate only professionalism and correct handling. For all other call types, a sale attempt was at least possible and should be assessed. IMPORTANT: Severity must always be scored (1–10) for every call type, including cs_call. Base severity on compliance failures, RUTH violations, incorrect opening, and professionalism — not on whether a sale was missed. A cs_call with a RUTH violation and a wrong brand name is a high-severity call.
 
 HIDDEN BOOKING OPPORTUNITY: On any call that isn't a direct sales call, a smart agent should still scan for a booking angle — especially certificate calls (customer may need extra nights beyond what their comp covers) and multi-night stay mentions on transfer/CS calls. If the agent missed a clear booking opportunity, set missedBookingOpportunity to true and explain what was available.
 
@@ -2614,7 +2614,8 @@ function renderResults(r) {
   // Severity
   const sevEl = document.getElementById('sevBig');
   const sevLbl = document.getElementById('sevLabel');
-  if (unbookable) {
+  const hasComplianceIssues = r.ruthViolation || (r.qaAutofails && r.qaAutofails.length > 0);
+  if (unbookable && !hasComplianceIssues) {
     sevEl.textContent = 'N/A'; sevEl.className = 'sev-big low';
     sevLbl.textContent = 'Not Applicable'; sevLbl.className = 'sev-label low';
   } else {
