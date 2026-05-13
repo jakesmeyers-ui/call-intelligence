@@ -2291,8 +2291,8 @@ SALES PROGRESS STEP:
 For unbookable calls (cs_call, transfer_escalation, hard_ruth, wrong_number), set salesProgressStep to 0.
 
 CALL CATEGORY — assign "callCategory" as exactly one of:
-- "sales_call" — Customer called to make a new reservation, full sales process applies
-- "cs_call" — Customer service: existing reservation changes, complaints, left items, or amenity questions about an EXISTING booking with us. NOTE: a customer asking about a hotel-side membership or loyalty program is NOT a cs_call — see HOTEL MEMBERSHIP INQUIRIES section.
+- "sales_call" — Customer called to make a new reservation, full sales process applies. This includes calls where no booking was completed due to unavailability, blocked inventory, or the customer changing their mind — the intent was a new booking, so it is still a sales_call.
+- "cs_call" — Customer service: ONLY for customers who already have an existing reservation made through the agency and are calling about changes, complaints, left items, or amenity questions tied to that existing booking. A cs_call requires a pre-existing reservation. If the customer called to make a NEW reservation — even if the property turned out to be unavailable, blocked, or sold out — it is NOT a cs_call. NOTE: a customer asking about a hotel-side membership or loyalty program is NOT a cs_call — see HOTEL MEMBERSHIP INQUIRIES section.
 - "hard_ruth" — Customer disengaged or hung up specifically upon learning they didn't reach the hotel
 - "block_group_call" — Customer calling about a block or group of rooms (event, wedding, corporate, sports team, etc.)
 - "inquiry_call" — Customer had a question but no clear booking intent (parking, pet policy, check-in times, etc.)
@@ -2308,7 +2308,7 @@ LOST REASON — assign "lostReason" as exactly one of (use "na" if the call type
 - "block_disengagement" — Customer was calling about a block reservation and disengaged when agent couldn't access it
 - "needs_to_consult" — Customer wanted to check with a spouse, travel partner, or colleague first
 - "payment_issues" — Card issues, didn't want to pay now, or payment concerns the agent couldn't resolve
-- "no_availability" — No suitable room available for the customer's dates or requirements
+- "no_availability" — No suitable room available for the customer's dates or requirements, including blocked inventory (rooms blocked by the property and not available for booking through the agency)
 - "callback_accepted" — Agent agreed to a callback as the first response without pushing to close
 - "agent_process_failure" — Sale was lost due to a clear agent error (skipped urgency, missed close, wrong opening, etc.). Do NOT use this if the call dropped — use call_dropped instead.
 - "customer_not_ready" — Customer was early in research, no genuine buying intent shown
