@@ -2268,6 +2268,11 @@ Only flag the conditions listed below. Do NOT add autofails for anything not on 
 8. Guaranteed a special request — agent confirmed an early check-in, late check-out, specific room location (ground floor, high floor, away from elevator, etc.), bed assignment, or any other special request as certain. Special requests can be submitted but are NEVER guaranteed — agents must always say "this is a special request and is not guaranteed — it's subject to hotel availability at the time of check-in."
 9. Call avoidance via false procedure — agent invented a procedural barrier that does not exist in order to avoid completing a reasonable customer request. The most common example: claiming to need supervisor approval before sharing a hotel's phone number. No such approval is required — agents can and should provide a hotel's contact number when asked. Any fabricated policy, fake approval requirement, or invented process step used to deflect or delay a customer request is both a false/misleading statement and call avoidance behavior. Flag the exact phrase used and note that no such procedure exists.
 
+SUPERVISOR APPROVAL LANGUAGE:
+Any time an agent invokes supervisor approval — for ANY reason — flag it in issues[]. Agents should never use supervisor approval as a reason to delay, defer, or avoid completing a customer request on a live call. This applies broadly: "I need to check with my supervisor", "I'll need supervisor authorization", "let me get my supervisor to approve that", or any equivalent phrasing. Always flag the exact quote and note that supervisor approval should not be used as a reason to delay the customer.
+- If the approval claim is clearly false (e.g., no supervisor approval is ever needed to share a hotel phone number, look up a rate, or make a reservation), escalate to autofail #9 in addition to flagging in issues[].
+- If it's genuinely unclear whether approval was required (e.g., a complex refund scenario), flag it in issues[] only — do not autofail — but note it as a potential call avoidance indicator that a supervisor should review.
+
 SALES PROGRESS STEP:
 "salesProgressStep" must be an integer 1–5 representing the furthest sales step the agent genuinely reached and executed:
 1 = Opening only (agent opened and identity was established, but never probed)
