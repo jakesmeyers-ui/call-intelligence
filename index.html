@@ -2345,7 +2345,7 @@ Never use generic terms like "Travel Agent", "Travel Agency" as a brand name, or
 When coaching on RUTH responses, the correct phrasing is: "No, you called [BRAND NAME], an independent travel agency — but you called the right place! I specialize in booking hotels like [Hotel Name]..." — always say "hotels like [Hotel Name]", never "I specialize in booking [Hotel Name]" as that implies exclusivity.
 
 OPENING SCRIPT — SURFACE RULE:
-Only mention the opening script in "summary", "issues[]", "rootCause", or "coachingFocus" if stepChecklist.opening.statedName or stepChecklist.opening.reassuringTransition is "fail". If either is "warn" (transcription unclear, garbled phrase, etc.), record it in the checklist only — do NOT surface it anywhere else in the output. The agent should not be penalized in coaching or summary for a transcription artifact.
+Only mention the opening script in "summary", "issues[]", "rootCause", or "coachingFocus" if stepChecklist.opening.verbatimPhrase, stepChecklist.opening.statedName, or stepChecklist.opening.reassuringTransition is "fail". If any of these is "warn" (transcription unclear, garbled phrase, etc.), record it in the checklist only — do NOT surface it anywhere else in the output. The agent should not be penalized in coaching or summary for a transcription artifact.
 
 OUTPUT FORMAT REQUIREMENTS:
 - "rootCause": Write as 3-4 bullet points. Start each with the • character. Each bullet is one sentence max. Reference actual lines or moments.
@@ -2391,7 +2391,7 @@ JSON structure:
   "offerScore": <integer>,
   "arcScore": <integer or null>,
   "stepChecklist": {
-    "opening":  { "statedName": <"pass"/"warn"/"fail">, "reassuringTransition": <"pass"/"warn"/"fail"> },
+    "opening":  { "verbatimPhrase": <"pass"/"warn"/"fail" — "pass" if "an independent travel agency" or equivalent appeared immediately after the brand name; "warn" if a garbled/phonetically close version appeared (transcription artifact); "fail" if no agency identification was present at all>, "statedName": <"pass"/"warn"/"fail">, "reassuringTransition": <"pass"/"warn"/"fail"> },
     "probing":  { "askedDates": <"pass"/"warn"/"fail">, "askedGuestsRooms": <"pass"/"warn"/"fail">, "askedRoomType": <"pass"/"warn"/"fail">, "askedHIQ": <"pass"/"warn"/"fail">, "urgencyOnDates": <"pass"/"warn"/"fail"/"na"> },
     "offer":    { "statedBedType": <"pass"/"warn"/"fail">, "namedAmenities": <"pass"/"warn"/"fail">, "statedCancellationPolicy": <"pass"/"warn"/"fail"/"na" — use "na" if the agent never mentioned cancellation and the transcript gives no indication free cancellation was available>, "statedPrice": <"pass"/"warn"/"fail">, "framedRate": <"pass"/"warn"/"fail">, "urgencyInOffer": <"pass"/"warn"/"fail"> },
     "close":    { "immediateClose": <"pass"/"warn"/"fail">, "askedName": <"pass"/"warn"/"fail"> },
@@ -2770,6 +2770,7 @@ function renderResults(r) {
   }
   const o = cl.opening || {}, pr = cl.probing || {}, of = cl.offer || {}, c = cl.close || {}, arc = cl.arc || {};
   const openingItems = [
+    pclItem('Used verbatim opening phrase ("...an independent travel agency")', o.verbatimPhrase, false, 'verbatimPhrase'),
     pclItem('Stated agent\'s name', o.statedName, false, 'statedName'),
     pclItem('Delivered reassuring transitional statement', o.reassuringTransition, false, 'reassuringTransition'),
   ];
