@@ -2336,6 +2336,16 @@ THREE STATES — use carefully:
 
 The warn state exists because transcription software is imperfect. Use "na" only when an item genuinely does not apply (e.g. urgencyOnDates = "na" if dates were never given; ARC fields = "na" if no objection occurred).
 
+VERBATIM RECAP CHECKLIST:
+The verbatim recap is the confirmation the agent reads back to the customer after taking payment. Evaluate "stepChecklist.recap" only when a booking was completed on this call (callOutcome = "booked"). If no booking was made, set recap.applicable = false and all recap fields to "na".
+When applicable, evaluate each of these items as "pass" / "fail" / "warn":
+- hotelNameAddress: agent stated the hotel name and full address
+- checkInOutTimes: agent confirmed check-in and check-out times
+- guestName: agent confirmed the guest's name
+- roomDetails: agent confirmed room type, number of guests, number of rooms, and number of nights
+- cancellationPolicy: agent stated the cancellation policy
+- totalAmount: agent stated the total amount charged
+
 SILENCE / HOLD DETECTION:
 Scan every consecutive pair of transcript lines and parse their timestamps (handle formats HH:MM:SS or MM:SS). Calculate the gap in seconds between adjacent lines. For every gap of 20 seconds or more, record it. Return all such gaps in "holdGaps" as an array of objects:
   { "start": "MM:SS", "end": "MM:SS", "seconds": <integer>, "note": "<who was silent — e.g. 'Customer silent', 'Agent placed hold', 'Mutual silence'>" }
@@ -2352,7 +2362,7 @@ Only mention the opening script in "summary", "issues[]", "rootCause", or "coach
 
 OUTPUT FORMAT REQUIREMENTS:
 - "rootCause": Write as 3-4 bullet points. Start each with the • character. Each bullet is one sentence max. Reference actual lines or moments.
-- "coachingScript": Show ONE key exchange only. ❌ line = max one sentence (what they said). ✅ line = max two sentences (what they should have said). Keep it tight and actionable.
+- "coachingScript": Show ONE key exchange only. ❌ line = max one sentence (what they said). ✅ line = max two sentences (what they should have said). Keep it tight and actionable. NEVER use the opening intro script as the coaching example — the transcription software garbles it too often to be reliable coaching material. Choose a different moment from the call.
 - "coachingFocus": { "focus": "ONE thing this agent must work on — state it as a clear, direct directive", "steps": ["Specific action step 1 — concrete and doable", "Specific action step 2", "Specific action step 3"] }
 - "issues": Each issue is ONE short sentence (15 words max). Reference a specific moment.
 
@@ -2399,6 +2409,7 @@ JSON structure:
     "offer":    { "statedBedType": <"pass"/"warn"/"fail">, "namedAmenities": <"pass"/"warn"/"fail">, "statedCancellationPolicy": <"pass"/"warn"/"fail"/"na" — use "na" if the agent never mentioned cancellation and the transcript gives no indication free cancellation was available>, "statedPrice": <"pass"/"warn"/"fail">, "framedRate": <"pass"/"warn"/"fail">, "urgencyInOffer": <"pass"/"warn"/"fail"> },
     "close":    { "immediateClose": <"pass"/"warn"/"fail">, "askedName": <"pass"/"warn"/"fail"> },
     "arc":      { "applicable": <bool>, "acknowledged": <"pass"/"warn"/"fail"/"na">, "askedOpenEnded": <"pass"/"warn"/"fail"/"na">, "respondedWithValue": <"pass"/"warn"/"fail"/"na">, "urgencyInResponse": <"pass"/"warn"/"fail"/"na">, "usedHolyTrinity": <"pass"/"warn"/"fail"/"na">, "confirmedConcern": <"pass"/"warn"/"fail"/"na">, "closedAfterResponse": <"pass"/"warn"/"fail"/"na">, "doubledDown": <"pass"/"warn"/"fail"/"na">, "noCallbackFirst": <"pass"/"warn"/"fail"/"na"> },
+    "recap":    { "applicable": <bool — true only if callOutcome is "booked">, "hotelNameAddress": <"pass"/"fail"/"warn"/"na">, "checkInOutTimes": <"pass"/"fail"/"warn"/"na">, "guestName": <"pass"/"fail"/"warn"/"na">, "roomDetails": <"pass"/"fail"/"warn"/"na">, "cancellationPolicy": <"pass"/"fail"/"warn"/"na">, "totalAmount": <"pass"/"fail"/"warn"/"na"> },
     "notes": <object — optional short notes keyed by field name, e.g. {"statedName": "name unclear in transcript"}>
   },
   "urgencyUsed": <boolean>,
@@ -2815,12 +2826,27 @@ function renderResults(r) {
   } else {
     arcItems = [`<div style="font-size:12px;color:var(--text-3);padding:6px 0">No objection occurred on this call.</div>`];
   }
+  const recap = cl.recap || {};
+  let recapItems;
+  if (recap.applicable) {
+    recapItems = [
+      pclItem('Hotel name and address', recap.hotelNameAddress, false, 'hotelNameAddress'),
+      pclItem('Check-in and check-out times', recap.checkInOutTimes, false, 'checkInOutTimes'),
+      pclItem('Guest name confirmed', recap.guestName, false, 'guestName'),
+      pclItem('Room type, guests, rooms, and nights', recap.roomDetails, false, 'roomDetails'),
+      pclItem('Cancellation policy', recap.cancellationPolicy, false, 'cancellationPolicy'),
+      pclItem('Total amount', recap.totalAmount, false, 'totalAmount'),
+    ];
+  } else {
+    recapItems = [`<div style="font-size:12px;color:var(--text-3);padding:6px 0">No booking completed — recap not applicable.</div>`];
+  }
   clEl.innerHTML =
     pclSection('Opening', '👋', openingItems) +
     pclSection('Probing & HIQ', '🔍', probingItems) +
     pclSection('Offer', '💰', offerItems) +
     pclSection('Assumptive Close', '🤝', closeItems) +
-    `<div class="pcl-section full"><div class="pcl-section-title">🔄 ARC — Objection Handling</div>${arcItems.join('')}</div>`;
+    `<div class="pcl-section full"><div class="pcl-section-title">🔄 ARC — Objection Handling</div>${arcItems.join('')}</div>` +
+    `<div class="pcl-section full"><div class="pcl-section-title">📋 Verbatim Recap</div>${recapItems.join('')}</div>`;
 
   // Coaching - highlight gold = say, red = don't say
   document.getElementById('rCoachingIntro').textContent = (r.coachingIntro || '').replace(/\*\*(.*?)\*\*/g,'$1');
