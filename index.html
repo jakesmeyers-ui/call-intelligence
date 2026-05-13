@@ -2508,6 +2508,10 @@ Analyze this transcript. Every value must come from THIS specific call.`;
     if (Array.isArray(result.qaAutofails)) {
       result.qaAutofails = result.qaAutofails.filter(f => !/verbatim|opening/i.test(f));
     }
+    // Strip opening/intro issues — transcription artifacts and opening warns belong in the checklist only
+    if (Array.isArray(result.issues)) {
+      result.issues = result.issues.filter(f => !/verbatim opening|opening (script|phrase|verbatim|brand)|brand name.*transcri|transcri.*(brand|opening|intro)|garbled.*(brand|opening)|instead of approved|likely transcription error|opening intro/i.test(f));
+    }
     window._lastAnalysis = { ...result, agent, tenure, duration, durationSeconds: window._durationSeconds || null, callEnd, interactionId, transcriptHash: window._transcriptHash || null,
       callType: result.callType || 'new_booking',
       ruthViolation: result.ruthViolation || false,
