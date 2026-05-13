@@ -2247,7 +2247,7 @@ For EVERY call — not just failures — you must assess call outcome and extrac
 
 "callOutcome" must be one of:
 - "booked" — sale was completed on the call
-- "good_process_no_sale" — agent followed the full sales process correctly but customer still did not book (external reason, not agent failure)
+- "good_process_no_sale" — agent followed the FULL sales process (all 5 steps) correctly but customer still did not book (external reason, not agent failure). Only use this if the agent genuinely reached and executed the close. A call that ended early due to no availability, blocked inventory, or the customer dropping before the offer is NOT good_process_no_sale — use partial_process instead.
 - "partial_process" — agent followed some steps correctly but missed others
 - "poor_process" — agent did not follow the sales process
 
@@ -2688,9 +2688,9 @@ function renderResults(r) {
     salesTracker.innerHTML = stepDefs.map(s => {
       let cls = 'skipped';
       let dropLabel = '';
-      if (s.num < reached) cls = 'done';
+      if (r.callOutcome === 'booked') { cls = 'done'; dropLabel = ''; }
+      else if (s.num < reached) cls = 'done';
       else if (s.num === reached) { cls = 'dropped'; dropLabel = '<div class="st-drop-label">Drop Point</div>'; }
-      if (r.callOutcome === 'booked' || r.callOutcome === 'good_process_no_sale') { cls = 'done'; dropLabel = ''; }
       return `<div class="st-step ${cls}">
         <div class="st-num">STEP ${s.num}</div>
         <div class="st-icon">${s.icon}</div>
