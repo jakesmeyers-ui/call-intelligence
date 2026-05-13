@@ -2516,6 +2516,15 @@ Analyze this transcript. Every value must come from THIS specific call.`;
     if (Array.isArray(result.issues)) {
       result.issues = result.issues.filter(f => !/verbatim opening|opening (script|phrase|verbatim|brand|intro|note)|brand name|transcri.*(brand|opening|intro|verbatim)|garbled|instead of approved|likely transcription|phonetically|opening.*transcri|intro.*brand|brand.*intro/i.test(f));
     }
+    // Clear coaching script/intro if it's about the opening verbatim phrase — never coach on the intro
+    const openingCoachPattern = /thank you for calling|opening the call|when opening|opened with|brand name.*agency|agency.*brand name|agency phrase|separated.*brand|brand.*together|together.*phrase|keep.*brand.*agency|verbatim opening/i;
+    if (result.coachingScript && openingCoachPattern.test(result.coachingScript)) {
+      result.coachingScript = '';
+      result.coachingIntro  = '';
+    }
+    if (result.coachingIntro && openingCoachPattern.test(result.coachingIntro)) {
+      result.coachingIntro = '';
+    }
     window._lastAnalysis = { ...result, agent, tenure, duration, durationSeconds: window._durationSeconds || null, callEnd, interactionId, transcriptHash: window._transcriptHash || null,
       callType: result.callType || 'new_booking',
       ruthViolation: result.ruthViolation || false,
