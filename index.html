@@ -2383,6 +2383,7 @@ OUTPUT FORMAT REQUIREMENTS:
 
 OUTPUT EFFICIENCY:
 Omit null fields and empty arrays entirely — do not include them in the output. String values must be concise: "summary" ≤2 sentences, "rootCause" bullets ≤1 sentence each, "coachingScript" ≤3 total sentences, "coachingIntro" ≤1 sentence. No preamble outside the JSON object.
+SUMMARY LANGUAGE: Never use the phrase "customer service call" in the summary unless callCategory is "cs_call". For inquiry_call, sales_call, and all other categories, describe the call by what happened — not by labeling it customer service.
 
 Return ONLY a JSON object — no markdown, no backticks, no text outside the JSON.
 
@@ -2524,6 +2525,10 @@ Analyze this transcript. Every value must come from THIS specific call.`;
     }
     if (result.coachingIntro && openingCoachPattern.test(result.coachingIntro)) {
       result.coachingIntro = '';
+    }
+    // Strip "customer service call" language from summary unless this actually is a cs_call
+    if (result.summary && result.callCategory !== 'cs_call') {
+      result.summary = result.summary.replace(/customer service call/gi, 'call');
     }
     window._lastAnalysis = { ...result, agent, tenure, duration, durationSeconds: window._durationSeconds || null, callEnd, interactionId, transcriptHash: window._transcriptHash || null,
       callType: result.callType || 'new_booking',
