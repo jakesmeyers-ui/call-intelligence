@@ -2340,14 +2340,16 @@ THREE STATES — use carefully:
 The warn state exists because transcription software is imperfect. Use "na" only when an item genuinely does not apply (e.g. urgencyOnDates = "na" if dates were never given; ARC fields = "na" if no objection occurred).
 
 VERBATIM RECAP CHECKLIST:
-The verbatim recap is the confirmation the agent reads back to the customer after taking payment. Evaluate "stepChecklist.recap" only when a booking was completed on this call (callOutcome = "booked"). If no booking was made, set recap.applicable = false and all recap fields to "na".
-When applicable, evaluate each of these items as "pass" / "fail" / "warn":
+The verbatim recap is the confirmation the agent reads back to the customer after taking payment. "stepChecklist.recaps" is an array — one entry per booking completed on the call. If no booking was made, return recaps as an empty array [].
+For each booking, include a "bookingNumber" (1 for first, 2 for second, etc.) and evaluate each item as "pass" / "fail" / "warn":
 - hotelNameAddress: agent stated the hotel name and full address
 - checkInOutTimes: agent confirmed check-in and check-out times
 - guestName: agent confirmed the guest's name
 - roomDetails: agent confirmed room type, number of guests, number of rooms, and number of nights
 - cancellationPolicy: agent stated the cancellation policy
 - totalAmount: agent stated the total amount charged
+
+MULTIPLE BOOKINGS: If the call had two or more bookings, the recaps array must have one entry per booking. Each booking must be evaluated independently — do not assume items from an earlier booking carry over to a later one.
 
 COMPLETE RECAP REQUIRED FOR EVERY BOOKING: Each booking on a call must have its own full verbatim recap — no exceptions. An agent cannot shortcut by referencing a prior booking (e.g. "everything's the same as before", "same as the first booking, except the room", "the rest of the details are unchanged"). Every item — hotel name/address, check-in/out times, guest name, room details, cancellation policy, total amount — must be stated for each booking individually. If the agent references a prior booking instead of reciting the full recap, mark any omitted items as "fail", not "warn".
 
@@ -2420,7 +2422,7 @@ JSON structure:
     "offer":    { "statedBedType": <"pass"/"warn"/"fail">, "namedAmenities": <"pass"/"warn"/"fail">, "statedCancellationPolicy": <"pass"/"warn"/"fail"/"na" — use "na" if the agent never mentioned cancellation and the transcript gives no indication free cancellation was available>, "statedPrice": <"pass"/"warn"/"fail">, "framedRate": <"pass"/"warn"/"fail">, "urgencyInOffer": <"pass"/"warn"/"fail"> },
     "close":    { "immediateClose": <"pass"/"warn"/"fail">, "askedName": <"pass"/"warn"/"fail"> },
     "arc":      { "applicable": <bool>, "acknowledged": <"pass"/"warn"/"fail"/"na">, "askedOpenEnded": <"pass"/"warn"/"fail"/"na">, "respondedWithValue": <"pass"/"warn"/"fail"/"na">, "urgencyInResponse": <"pass"/"warn"/"fail"/"na">, "usedHolyTrinity": <"pass"/"warn"/"fail"/"na">, "confirmedConcern": <"pass"/"warn"/"fail"/"na">, "closedAfterResponse": <"pass"/"warn"/"fail"/"na">, "doubledDown": <"pass"/"warn"/"fail"/"na">, "noCallbackFirst": <"pass"/"warn"/"fail"/"na"> },
-    "recap":    { "applicable": <bool — true only if callOutcome is "booked">, "hotelNameAddress": <"pass"/"fail"/"warn"/"na">, "checkInOutTimes": <"pass"/"fail"/"warn"/"na">, "guestName": <"pass"/"fail"/"warn"/"na">, "roomDetails": <"pass"/"fail"/"warn"/"na">, "cancellationPolicy": <"pass"/"fail"/"warn"/"na">, "totalAmount": <"pass"/"fail"/"warn"/"na"> },
+    "recaps":   [{ "bookingNumber": <integer — 1 for first booking, 2 for second, etc.>, "hotelNameAddress": <"pass"/"fail"/"warn"/"na">, "checkInOutTimes": <"pass"/"fail"/"warn"/"na">, "guestName": <"pass"/"fail"/"warn"/"na">, "roomDetails": <"pass"/"fail"/"warn"/"na">, "cancellationPolicy": <"pass"/"fail"/"warn"/"na">, "totalAmount": <"pass"/"fail"/"warn"/"na"> }],
     "notes": <object — optional short notes keyed by field name, e.g. {"statedName": "name unclear in transcript"}>
   },
   "urgencyUsed": <boolean>,
@@ -2841,19 +2843,31 @@ function renderResults(r) {
   } else {
     arcItems = [`<div style="font-size:12px;color:var(--text-3);padding:6px 0">No objection occurred on this call.</div>`];
   }
-  const recap = cl.recap || {};
-  let recapItems;
-  if (recap.applicable) {
-    recapItems = [
+  // Normalize recaps: support new array format and old single-object format
+  let recapList = [];
+  if (Array.isArray(cl.recaps) && cl.recaps.length) {
+    recapList = cl.recaps;
+  } else if (cl.recap && cl.recap.applicable) {
+    recapList = [{ bookingNumber: 1, ...cl.recap }];
+  }
+  function renderRecapItems(recap) {
+    return [
       pclItem('Hotel name and address', recap.hotelNameAddress, false, 'hotelNameAddress'),
       pclItem('Check-in and check-out times', recap.checkInOutTimes, false, 'checkInOutTimes'),
       pclItem('Guest name confirmed', recap.guestName, false, 'guestName'),
       pclItem('Room type, guests, rooms, and nights', recap.roomDetails, false, 'roomDetails'),
       pclItem('Cancellation policy', recap.cancellationPolicy, false, 'cancellationPolicy'),
       pclItem('Total amount', recap.totalAmount, false, 'totalAmount'),
-    ];
+    ].join('');
+  }
+  let recapSections = '';
+  if (recapList.length) {
+    recapSections = recapList.map(recap => {
+      const label = recapList.length > 1 ? `📋 Verbatim Recap — Booking ${recap.bookingNumber}` : '📋 Verbatim Recap';
+      return `<div class="pcl-section full"><div class="pcl-section-title">${label}</div>${renderRecapItems(recap)}</div>`;
+    }).join('');
   } else {
-    recapItems = [`<div style="font-size:12px;color:var(--text-3);padding:6px 0">No booking completed — recap not applicable.</div>`];
+    recapSections = `<div class="pcl-section full"><div class="pcl-section-title">📋 Verbatim Recap</div><div style="font-size:12px;color:var(--text-3);padding:6px 0">No booking completed — recap not applicable.</div></div>`;
   }
   clEl.innerHTML =
     pclSection('Opening', '👋', openingItems) +
@@ -2861,7 +2875,7 @@ function renderResults(r) {
     pclSection('Offer', '💰', offerItems) +
     pclSection('Assumptive Close', '🤝', closeItems) +
     `<div class="pcl-section full"><div class="pcl-section-title">🔄 ARC — Objection Handling</div>${arcItems.join('')}</div>` +
-    `<div class="pcl-section full"><div class="pcl-section-title">📋 Verbatim Recap</div>${recapItems.join('')}</div>`;
+    recapSections;
 
   // Coaching - highlight gold = say, red = don't say
   document.getElementById('rCoachingIntro').textContent = (r.coachingIntro || '').replace(/\*\*(.*?)\*\*/g,'$1');
