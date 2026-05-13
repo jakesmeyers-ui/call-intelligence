@@ -2373,7 +2373,7 @@ JSON structure:
   "dropStep": <string — name of step where sale was lost, specific to this call>,
   "dropTier": <string>,
   "severity": <integer 1-10>,
-  "severityExplanation": <string — 2-3 sentences explaining this exact call's severity score>,
+  "severityExplanation": <string — 2 sentences focused on score CALIBRATION only: (1) what specific failure pushed the score to this level, and (2) what kept it from being higher or lower. Do NOT recap the call — that information is already in summary and issues. Example format: "The ARC failure on a live price objection pushes this to a 6 — walking the customer to competitor hotels is an active own-goal, not a passive miss. It stays below 7 because the agent did make a full offer with a specific rate before losing the thread.">,
   "summary": <string — 2-3 sentences naming the agent, what they did, and what went wrong>,
   "rootCause": <string — 3-5 sentences on the specific habit or mindset failure shown in THIS transcript. Reference actual lines.>,
   "momentOfLoss": <string — exact timestamp and quote from THIS transcript where the sale was lost. Format: [MM:SS AgentName]: "their exact words" — then explain why.>,
