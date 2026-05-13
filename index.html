@@ -2346,6 +2346,12 @@ When applicable, evaluate each of these items as "pass" / "fail" / "warn":
 - cancellationPolicy: agent stated the cancellation policy
 - totalAmount: agent stated the total amount charged
 
+TRANSCRIPTION LENIENCY FOR THE RECAP: The verbatim recap is spoken quickly and transcription software frequently garbles, truncates, or drops portions of it. Apply these rules strictly:
+- If the transcript shows the agent is clearly in recap mode (reading back booking details, confirming reservation information) but a specific element is unclear, cut off, or garbled — use "warn", not "fail".
+- Only use "fail" when you can confirm with confidence that the element was completely absent — i.e., the recap section of the transcript is intact and readable, and the item was simply never mentioned.
+- If the transcript cuts off, trails off with "...", or is clearly incomplete during the recap, use "warn" for any item you cannot confirm either way.
+- When in doubt between "fail" and "warn", always choose "warn". False negatives (missing a real fail) are less harmful than false positives (penalizing an agent for a transcription gap).
+
 SILENCE / HOLD DETECTION:
 Scan every consecutive pair of transcript lines and parse their timestamps (handle formats HH:MM:SS or MM:SS). Calculate the gap in seconds between adjacent lines. For every gap of 20 seconds or more, record it. Return all such gaps in "holdGaps" as an array of objects:
   { "start": "MM:SS", "end": "MM:SS", "seconds": <integer>, "note": "<who was silent — e.g. 'Customer silent', 'Agent placed hold', 'Mutual silence'>" }
